@@ -1,0 +1,1898 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>לוח הבית</title>
+
+  <!-- PWA: Add to Home Screen -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="לוח הבית" />
+  <meta name="application-name" content="לוח הבית" />
+  <meta name="theme-color" content="#3d1a07" />
+  <meta name="color-scheme" content="light" />
+
+  <!-- Manifest + Icons -->
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" id="apple-touch-icon-link" href="" />
+  <script>
+    // Generate PNG icon for iOS home screen (iOS doesn't support SVG icons)
+    (function() {
+      function makeIcon(size, radius, fontSize, textY) {
+        const c = document.createElement('canvas');
+        c.width = size; c.height = size;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#3d1a07';
+        ctx.beginPath();
+        ctx.moveTo(radius, 0);
+        ctx.arcTo(size, 0, size, size, radius);
+        ctx.arcTo(size, size, 0, size, radius);
+        ctx.arcTo(0, size, 0, 0, radius);
+        ctx.arcTo(0, 0, size, 0, radius);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold ' + fontSize + 'px serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('✦', size / 2, textY);
+        return c.toDataURL('image/png');
+      }
+      document.getElementById('apple-touch-icon-link').href = makeIcon(192, 36, 110, 130);
+    })();
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg-primary: #faf4ec;
+      --bg-secondary: #f0e4d0;
+      --bg-tertiary: #e4d0b8;
+      --text-primary: #2d1508;
+      --text-secondary: #7a5030;
+      --text-muted: #a88060;
+      --border-color: #dfc8b0;
+      --accent-brown: #3d1a07;
+      --accent-light: #8b4513;
+      --accent-lightest: #b8601e;
+      --card-bg: #ffffff;
+      --shadow-sm: 0 2px 8px rgba(60,25,5,0.08);
+      --shadow-md: 0 4px 20px rgba(60,25,5,0.13);
+      --shadow-lg: 0 8px 32px rgba(60,25,5,0.18);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-tertiary) 100%);
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      direction: rtl;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      color: var(--text-primary);
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+    #install-banner {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--accent-brown); color: #ffffff;
+      padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      z-index: 3000; font-size: 14px; font-weight: 600;
+      box-shadow: var(--shadow-md);
+      animation: slideUp 0.4s ease;
+      transition: all 0.3s ease;
+    }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+    #install-banner button {
+      background: #ffffff; color: var(--accent-brown); border: none;
+      border-radius: 8px; padding: 8px 14px; font-weight: 800;
+      font-size: 13px; cursor: pointer; white-space: nowrap; font-family: inherit;
+      transition: all 0.2s ease;
+    }
+    #install-banner .dismiss {
+      background: transparent; color: var(--border-color); padding: 4px 8px; font-size: 18px;
+      transition: color 0.2s ease;
+    }
+    input, select, textarea, button { font-family: inherit; transition: background-color 0.2s ease, border-color 0.2s ease; }
+    /* iOS: prevent auto-zoom on focus (requires font-size >= 16px) */
+    @media screen and (max-width: 768px) {
+      input, select, textarea { font-size: 16px !important; }
+    }
+    /* iOS: remove tap flash */
+    * { -webkit-tap-highlight-color: transparent; }
+    /* iOS: prevent text size adjustment */
+    html { -webkit-text-size-adjust: 100%; }
+    /* iOS: smooth momentum scrolling */
+    .modal-box { -webkit-overflow-scrolling: touch; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; padding: 16px;
+      animation: fadeIn 0.2s ease;
+    }
+    .modal-box {
+      background: var(--card-bg); border-radius: 18px; padding: 24px;
+      width: 100%; max-width: 440px; max-height: 85vh; overflow-y: auto;
+      box-shadow: var(--shadow-lg);
+      animation: fadeIn 0.2s ease;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="install-banner" style="display:none">
+    <span>📲 הוסיפי לדף הבית של הפלאפון</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="install-btn">התקני</button>
+      <button class="dismiss" id="dismiss-btn">✕</button>
+    </div>
+  </div>
+
+  <script>
+    let deferredPrompt = null;
+    const banner = document.getElementById("install-banner");
+    const installBtn = document.getElementById("install-btn");
+    const dismissBtn = document.getElementById("dismiss-btn");
+
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (!localStorage.getItem("pwa_dismissed")) {
+        banner.style.display = "flex";
+      }
+    });
+
+    installBtn && installBtn.addEventListener("click", async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      banner.style.display = "none";
+    });
+
+    dismissBtn && dismissBtn.addEventListener("click", () => {
+      banner.style.display = "none";
+      localStorage.setItem("pwa_dismissed", "1");
+    });
+
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone = window.navigator.standalone;
+    if (isIOS && !isStandalone && !localStorage.getItem("ios_hint_dismissed")) {
+      const iosBanner = document.createElement("div");
+      iosBanner.id = "ios-install-banner";
+      iosBanner.style.cssText = "position:fixed;bottom:0;left:0;right:0;background:#3d1a07;color:#ffffff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;z-index:3000;font-size:13px;font-weight:600;box-shadow:0 -4px 20px rgba(0,0,0,0.3)";
+      iosBanner.innerHTML = '<span>📲 להוספה למסך הבית: לחצי <strong style=\"font-size:16px\">⎙</strong> ← "הוסף למסך הבית"</span><button style=\"background:transparent;color:#c4a882;border:none;font-size:20px;cursor:pointer;font-family:inherit\" id=\"ios-dismiss\">✕</button>';
+      document.body.appendChild(iosBanner);
+      document.getElementById("ios-dismiss").addEventListener("click", () => {
+        iosBanner.style.display = "none";
+        localStorage.setItem("ios_hint_dismissed", "1");
+      });
+    }
+  </script>
+
+  <script>
+    const SyncManager = {
+      db: null,
+      roomId: null,
+      _refs: {},
+      _initialized: false,
+
+      init(config, roomId) {
+        this.disconnect();
+        if (!firebase.apps.length) {
+          firebase.initializeApp(config);
+        }
+        this.db = firebase.database();
+        this.roomId = roomId;
+        this._initialized = true;
+        this._refs = {};
+      },
+
+      _path(key) { return "rooms/" + this.roomId + "/" + key; },
+
+      save(key, value) {
+        if (!this._initialized) return Promise.resolve();
+        return this.db.ref(this._path(key)).set(value).catch(e => console.warn("Firebase save:", e));
+      },
+
+      listen(key, callback) {
+        if (!this._initialized) return;
+        if (this._refs[key]) this._refs[key].off();
+        const ref = this.db.ref(this._path(key));
+        this._refs[key] = ref;
+        ref.on("value", snap => {
+          const val = snap.val();
+          if (val !== null && val !== undefined) callback(val);
+        });
+      },
+
+      disconnect() {
+        Object.values(this._refs).forEach(ref => { try { ref.off(); } catch(e) {} });
+        this._refs = {};
+        this._initialized = false;
+      }
+    };
+  </script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // ===== IndexedDB Storage =====
+    class IndexedDBManager {
+      constructor(dbName = "DropListDB") {
+        this.dbName = dbName;
+        this.db = null;
+      }
+
+      async init() {
+        return new Promise((resolve, reject) => {
+          const req = indexedDB.open(this.dbName, 1);
+          req.onerror = () => reject(req.error);
+          req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains("data")) {
+              db.createObjectStore("data");
+            }
+          };
+          req.onsuccess = () => {
+            this.db = req.result;
+            resolve();
+          };
+        });
+      }
+
+      async get(key) {
+        return new Promise((resolve, reject) => {
+          const tx = this.db.transaction("data", "readonly");
+          const store = tx.objectStore("data");
+          const req = store.get(key);
+          req.onerror = () => reject(req.error);
+          req.onsuccess = () => resolve(req.result);
+        });
+      }
+
+      async set(key, value) {
+        return new Promise((resolve, reject) => {
+          const tx = this.db.transaction("data", "readwrite");
+          const store = tx.objectStore("data");
+          const req = store.put(value, key);
+          req.onerror = () => reject(req.error);
+          req.onsuccess = () => resolve();
+        });
+      }
+    }
+
+    const dbManager = new IndexedDBManager();
+    dbManager.init().catch(() => console.log("IndexedDB not available, falling back to localStorage"));
+
+    function useStorageWithDB(key, initial) {
+      const [val, setVal] = useState(initial);
+      const [isReady, setIsReady] = useState(false);
+
+      useEffect(() => {
+        const loadData = async () => {
+          try {
+            if (dbManager.db) {
+              const stored = await dbManager.get(key);
+              if (stored !== undefined) {
+                setVal(stored);
+                setIsReady(true);
+                return;
+              }
+            }
+            // fallback to localStorage
+            const s = localStorage.getItem(key);
+            if (s) setVal(JSON.parse(s));
+          } catch (e) {
+            try {
+              const s = localStorage.getItem(key);
+              if (s) setVal(JSON.parse(s));
+            } catch {}
+          }
+          setIsReady(true);
+        };
+        loadData();
+      }, [key]);
+
+      useEffect(() => {
+        if (!isReady) return;
+        const save = async () => {
+          try {
+            localStorage.setItem(key, JSON.stringify(val));
+            if (dbManager.db) {
+              await dbManager.set(key, val);
+            }
+          } catch (e) {
+            console.log("Storage save failed:", e);
+          }
+        };
+        save();
+      }, [key, val, isReady]);
+
+      return [val, setVal, isReady];
+    }
+
+    const STORAGE_KEY_TASKS       = "hila_tasks_v1";
+    const STORAGE_KEY_SHOPPING    = "hila_shopping_v1";
+    const STORAGE_KEY_TAGS        = "hila_tags_v1";
+    const STORAGE_KEY_SHOP_CATS   = "hila_shop_cats_v1";
+    const STORAGE_KEY_PANTRY      = "hila_pantry_v1";
+    const STORAGE_KEY_LISTS       = "hila_lists_v1";
+    const STORAGE_KEY_LAST_BACKUP = "hila_last_backup";
+    const STORAGE_KEY_BACKUP_DAYS = "hila_backup_days";
+
+    const DEFAULT_TAGS      = ["עבודה","בית","אישי","דחוף","ילדים"];
+    const DEFAULT_SHOP_CATS = ["ירקות ופירות","מוצרי חלב","בשר ודגים","מאפים","שימורים","ניקיון","טיפוח","קפואים","אחר"];
+
+    const CAT_EMOJIS = {
+      "ירקות ופירות":"🥦","מוצרי חלב":"🥛","בשר ודגים":"🥩",
+      "מאפים":"🍞","שימורים":"🥫","ניקיון":"🧹",
+      "טיפוח":"🧴","קפואים":"🧊","אחר":"📦",
+    };
+
+    const STATUS_MAP = {
+      open:       { label:"פתוח",   color:"#e8b86d", bg:"#fdf3e3" },
+      inprogress: { label:"בתהליך", color:"#6d9de8", bg:"#e3edfd" },
+      done:       { label:"הושלם",  color:"#6dc98e", bg:"#e3fded" },
+    };
+
+    const LIST_COLORS = ["#e8734a","#4a9de8","#4ab87d","#a04ae8","#e8b84a","#e84a8a","#4ac8e8","#8ae84a"];
+
+    function useLocalStorage(key, initial) {
+      const [val, setVal, isReady] = useStorageWithDB(key, initial);
+      return [val, setVal];
+    }
+
+    const iStyle = {
+      width:"100%", background:"var(--bg-primary)", border:`1.5px solid var(--border-color)`,
+      borderRadius:10, padding:"10px 12px", fontSize:14, color:"var(--text-primary)",
+      outline:"none", marginBottom:10, direction:"rtl",
+    };
+
+    function iconBtn(bg, color) {
+      return {
+        background:bg, color, border:"none", borderRadius:8,
+        width:44, height:44, cursor:"pointer", fontSize:16,
+        display:"inline-flex", alignItems:"center", justifyContent:"center", fontWeight:700,
+        flexShrink:0, transition:"all 0.2s ease",
+      };
+    }
+
+    function tbBtn(bg, color, border) {
+      return {
+        display:"inline-flex", alignItems:"center", gap:5,
+        background:bg, color, border:`1.5px solid ${border}`,
+        borderRadius:8, padding:"6px 12px", fontSize:12, fontWeight:700,
+        cursor:"pointer", whiteSpace:"nowrap", transition:"all 0.2s ease",
+      };
+    }
+
+    function downloadJSON(data, filename) {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function Toast({ msg, onDone }) {
+      useEffect(() => { const t = setTimeout(onDone, 2500); return () => clearTimeout(t); }, []);
+      return (
+        <div style={{
+          position:"fixed", bottom:24, right:"50%", transform:"translateX(50%)",
+          background:"var(--accent-brown)", color:"#ffffff", borderRadius:12,
+          padding:"10px 20px", fontSize:14, fontWeight:600,
+          boxShadow:"var(--shadow-md)", zIndex:2000,
+          animation:"fadeIn 0.3s ease",
+        }}>{msg}</div>
+      );
+    }
+
+    function ReminderNotification({ task, onClose }) {
+      useEffect(() => { const t = setTimeout(onClose, 5000); return () => clearTimeout(t); }, []);
+      return (
+        <div style={{
+          position:"fixed", top:"50%", left:"50%", transform:"translate(-50%, -50%)",
+          background:"var(--card-bg)", color:"var(--text-primary)", borderRadius:16,
+          padding:"24px", minWidth:280, maxWidth:350,
+          boxShadow:"var(--shadow-lg)", zIndex:2500,
+          border:`2px solid #ffc107`, textAlign:"center",
+          animation:"fadeIn 0.3s ease",
+        }}>
+          <div style={{fontSize:32, marginBottom:12}}>⏰</div>
+          <div style={{fontWeight:800, fontSize:16, marginBottom:8}}>זמן לעשות!</div>
+          <div style={{fontSize:15, marginBottom:12}}>{task.title}</div>
+          {task.description && <div style={{fontSize:13, color:"var(--text-secondary)", marginBottom:12}}>{task.description}</div>}
+          <button onClick={onClose} style={{background:"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))", color:"#fff", border:"none", borderRadius:8, padding:"8px 16px", fontWeight:700, cursor:"pointer"}}>סגור</button>
+        </div>
+      );
+    }
+
+    function ImportModal({ title, onImport, onClose }) {
+      const fileRef = useRef();
+      const [error, setError] = useState("");
+      function handleFile(e) {
+        const file = e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          try { onImport(JSON.parse(ev.target.result)); }
+          catch { setError("הקובץ אינו תקין. אנא בחר קובץ גיבוי תואם."); }
+        };
+        reader.readAsText(file);
+      }
+      return (
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal-box" onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:18,color:"var(--text-primary)",marginBottom:8}}>📂 טעינת גיבוי — {title}</div>
+            <div style={{color:"var(--text-secondary)",fontSize:13,marginBottom:20}}>בחר קובץ JSON שיוצא בעבר מהאפליקציה. הנתונים הנוכחיים יוחלפו.</div>
+            <input ref={fileRef} type="file" accept=".json" onChange={handleFile} style={{display:"none"}}/>
+            <button onClick={()=>fileRef.current.click()} style={{width:"100%",background:"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))",color:"#fff",border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:15,cursor:"pointer",marginBottom:10,transition:"all 0.2s ease"}}>בחר קובץ גיבוי</button>
+            {error && <div style={{color:"#d9534f",fontSize:13,marginBottom:10}}>{error}</div>}
+            <button onClick={onClose} style={{width:"100%",background:"var(--bg-secondary)",color:"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"10px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>ביטול</button>
+          </div>
+        </div>
+      );
+    }
+
+    function PantryModal({ pantry, shopCats, onAddToList, onRemoveFromPantry, onClose }) {
+      const [selected, setSelected] = useState({});
+      function toggleSelect(id) { setSelected(s=>({...s,[id]:!s[id]})); }
+      function selectAll() { const a={}; pantry.forEach(i=>{a[i.id]=true;}); setSelected(a); }
+      function clearAll() { setSelected({}); }
+      const selectedCount = Object.values(selected).filter(Boolean).length;
+      const grouped={};
+      pantry.forEach(item=>{const cat=item.category||"אחר";if(!grouped[cat])grouped[cat]=[];grouped[cat].push(item);});
+      const orderedCats = shopCats.filter(c=>grouped[c]);
+      return (
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal-box" onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:18,color:"var(--accent-brown)",marginBottom:4,transition:"color 0.2s ease"}}>📦 היסטוריית קניות</div>
+            <div style={{color:"var(--text-secondary)",fontSize:13,marginBottom:14,transition:"color 0.2s ease"}}>סמני פריטים שתרצי להוסיף לרשימה הנוכחית</div>
+            {pantry.length===0 ? (
+              <div style={{textAlign:"center",color:"var(--text-muted)",padding:30,fontSize:14,transition:"color 0.2s ease"}}>עדיין אין פריטים באחסון.<br/>כשתסמני קניות כ"נקנה" הן יישמרו כאן.</div>
+            ) : (
+              <>
+                <div style={{display:"flex",gap:8,marginBottom:12}}>
+                  <button onClick={selectAll} style={tbBtn("var(--bg-secondary)","var(--accent-light)","var(--border-color)")}>✔ סמן הכל</button>
+                  <button onClick={clearAll}  style={tbBtn("rgba(217, 83, 79, 0.1)","#d9534f","rgba(217, 83, 79, 0.2)")}>✕ נקה בחירה</button>
+                </div>
+                {orderedCats.map(cat=>(
+                  <div key={cat} style={{marginBottom:12}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",marginBottom:4,background:"linear-gradient(90deg, var(--bg-secondary), var(--bg-primary))",borderRadius:8,border:`1px solid var(--border-color)`,transition:"all 0.2s ease"}}>
+                      <span>{CAT_EMOJIS[cat]||"🔹"}</span>
+                      <span style={{fontWeight:800,fontSize:13,color:"var(--accent-light)",transition:"color 0.2s ease"}}>{cat}</span>
+                    </div>
+                    <div style={{background:"var(--card-bg)",borderRadius:10,border:`1.5px solid var(--border-color)`,overflow:"hidden",transition:"all 0.2s ease"}}>
+                      {grouped[cat].map((item,idx)=>(
+                        <div key={item.id} onClick={()=>toggleSelect(item.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",borderBottom:idx<grouped[cat].length-1?`1px solid var(--border-color)`:"none",background:selected[item.id]?"var(--bg-secondary)":"transparent",transition:"all 0.2s ease"}}>
+                          <div style={{width:20,height:20,borderRadius:5,flexShrink:0,border:`2px solid ${selected[item.id]?"#4caf7d":"var(--border-color)"}`,background:selected[item.id]?"#4caf7d":"var(--card-bg)",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s ease"}}>
+                            {selected[item.id]&&<span style={{color:"#fff",fontSize:12,fontWeight:800}}>✓</span>}
+                          </div>
+                          <span style={{flex:1,fontSize:14,fontWeight:600,color:"var(--text-primary)",transition:"color 0.2s ease"}}>{item.name}</span>
+                          {item.qty&&<span style={{fontSize:12,color:"var(--text-secondary)",background:"var(--bg-secondary)",borderRadius:20,padding:"1px 8px",transition:"all 0.2s ease"}}>{item.qty}</span>}
+                          <button onClick={e=>{e.stopPropagation();onRemoveFromPantry(item.id);}} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:16,padding:0,transition:"color 0.2s ease"}}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <button onClick={()=>{onAddToList(pantry.filter(i=>selected[i.id]));onClose();}} disabled={selectedCount===0} style={{width:"100%",marginTop:8,background:selectedCount>0?"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))":"var(--bg-secondary)",color:selectedCount>0?"#fff":"var(--text-muted)",border:"none",borderRadius:10,padding:"12px",fontWeight:700,fontSize:15,cursor:selectedCount>0?"pointer":"default",marginBottom:8,transition:"all 0.2s ease"}}>
+                  {selectedCount>0?`+ הוסף ${selectedCount} פריטים לרשימה`:"סמני פריטים להוספה"}
+                </button>
+              </>
+            )}
+            <button onClick={onClose} style={{width:"100%",background:"var(--bg-secondary)",color:"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"10px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>סגור</button>
+          </div>
+        </div>
+      );
+    }
+
+    /* ===== LISTS TAB COMPONENTS ===== */
+
+    function ListsTab({ lists, setLists, showImportLists, setShowImportLists, exportLists }) {
+      const [showNewList,  setShowNewList]  = React.useState(false);
+      const [newListName,  setNewListName]  = React.useState("");
+      const [newListEmoji, setNewListEmoji] = React.useState("📋");
+      const [openList,     setOpenList]     = React.useState(null);
+      const [itemInput,    setItemInput]    = React.useState("");
+      const [addingUnder,  setAddingUnder]  = React.useState(null); // subtitle id or "root"
+      const [showImport,   setShowImport]   = React.useState(false);
+      const [importText,   setImportText]   = React.useState("");
+      const [copied,       setCopied]       = React.useState(false);
+      const [subtitleInput,setSubtitleInput]= React.useState("");
+      const [showAddSub,   setShowAddSub]   = React.useState(false);
+      // drag state for items
+      const dragItem    = React.useRef(null);
+      const dragOverItem= React.useRef(null);
+      const ghostEl     = React.useRef(null);
+      const ghostOffset = React.useRef({x:0,y:0});
+      const dragSrcEl   = React.useRef(null);
+      const [editingId,    setEditingId]    = React.useState(null);
+      const [collapsedSubs,setCollapsedSubs]= React.useState(new Set());
+      const [dragOverIdx,  setDragOverIdx]  = React.useState(null);
+      const [movingItem,   setMovingItem]   = React.useState(null);
+
+      // drag state for list cards (home view reordering)
+      const listDragFrom    = React.useRef(null);
+      const listDragTo      = React.useRef(null);
+      const [listDragOver,  setListDragOver] = React.useState(null);
+
+      function onListDragStart(e, idx) {
+        listDragFrom.current = idx;
+        e.dataTransfer.effectAllowed = "move";
+        e.currentTarget.style.opacity = "0.5";
+      }
+      function onListDragEnterCard(idx) {
+        listDragTo.current = idx;
+        setListDragOver(idx);
+      }
+      function onListDragEnd(e) {
+        e.currentTarget.style.opacity = "1";
+        const from = listDragFrom.current, to = listDragTo.current;
+        listDragFrom.current = null; listDragTo.current = null;
+        setListDragOver(null);
+        if (from !== null && to !== null && from !== to) {
+          setLists(ls => {
+            const arr = [...ls];
+            const [item] = arr.splice(from, 1);
+            arr.splice(to, 0, item);
+            return arr;
+          });
+        }
+      }
+
+      function commitEdit(blockId, newText) {
+        const trimmed = newText.trim();
+        if (trimmed) {
+          updateCurrent((openList.blocks||[]).map(b=>b.id===blockId?{...b,text:trimmed}:b));
+        }
+        setEditingId(null);
+      }
+
+      const nextId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+      const EMOJIS = ["📋","🍽","🏕","🎉","✈️","🏠","📚","💪","🎓","🛍","🐾","🛒"];
+
+      function addList() {
+        if (!newListName.trim()) return;
+        // structure: list has "blocks" = array of {type:"subtitle"|"item", id, text, color?}
+        setLists(ls=>[...ls,{id:nextId(),name:newListName.trim(),emoji:newListEmoji,blocks:[]}]);
+        setNewListName(""); setNewListEmoji("📋"); setShowNewList(false);
+      }
+      function deleteList(id) { setLists(ls=>ls.filter(l=>l.id!==id)); if(openList&&openList.id===id) setOpenList(null); }
+
+      function updateCurrent(newBlocks) {
+        const updated = {...openList, blocks: newBlocks};
+        setLists(ls=>ls.map(l=>l.id===updated.id?updated:l));
+        setOpenList(updated);
+      }
+
+      function addItem(subtitleId) {
+        if (!itemInput.trim() || !openList) return;
+        const blocks = [...(openList.blocks||[])];
+        const newItem = {id:nextId(), type:"item", text:itemInput.trim(), subtitleId: subtitleId||null};
+        // insert after the last item of that subtitle, or at end
+        if (subtitleId) {
+          // find last item with this subtitleId
+          let insertIdx = blocks.length;
+          for (let i = blocks.length-1; i >= 0; i--) {
+            if (blocks[i].subtitleId === subtitleId || blocks[i].id === subtitleId) {
+              insertIdx = i+1; break;
+            }
+          }
+          blocks.splice(insertIdx, 0, newItem);
+        } else {
+          blocks.push(newItem);
+        }
+        updateCurrent(blocks);
+        setItemInput(""); setAddingUnder(null);
+      }
+
+      function addSubtitle() {
+        if (!subtitleInput.trim() || !openList) return;
+        const newSub = {id:nextId(), type:"subtitle", text:subtitleInput.trim()};
+        updateCurrent([...(openList.blocks||[]), newSub]);
+        setSubtitleInput(""); setShowAddSub(false);
+      }
+
+      function toggleSubCollapse(id) {
+        setCollapsedSubs(prev => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id); else next.add(id);
+          return next;
+        });
+      }
+
+      function moveItemTo(itemId, targetSubtitleId) {
+        const blocks = [...(openList.blocks||[])];
+        const itemIdx = blocks.findIndex(b => b.id === itemId);
+        if (itemIdx === -1) return;
+        const [item] = blocks.splice(itemIdx, 1);
+        item.subtitleId = targetSubtitleId;
+        if (targetSubtitleId) {
+          let insertIdx = blocks.length;
+          for (let i = blocks.length - 1; i >= 0; i--) {
+            if (blocks[i].id === targetSubtitleId || blocks[i].subtitleId === targetSubtitleId) {
+              insertIdx = i + 1; break;
+            }
+          }
+          blocks.splice(insertIdx, 0, item);
+        } else {
+          blocks.push(item);
+        }
+        updateCurrent(blocks);
+        setMovingItem(null);
+      }
+
+      function deleteBlock(blockId) {
+        // if subtitle, also delete its items
+        const blocks = (openList.blocks||[]);
+        const block = blocks.find(b=>b.id===blockId);
+        let newBlocks;
+        if (block && block.type==="subtitle") {
+          newBlocks = blocks.filter(b=>b.id!==blockId && b.subtitleId!==blockId);
+        } else {
+          newBlocks = blocks.filter(b=>b.id!==blockId);
+        }
+        updateCurrent(newBlocks);
+      }
+
+      function cycleItemColor(itemId) {
+        const order = [null, "green", "red"];
+        const item = (openList.blocks||[]).find(b=>b.id===itemId);
+        const next = order[(order.indexOf(item?.color||null)+1)%order.length];
+        updateCurrent((openList.blocks||[]).map(b=>b.id===itemId?{...b,color:next}:b));
+      }
+
+      // ref always updated to latest reorder logic (avoids stale closure in document listeners)
+      const reorderFn = React.useRef(null);
+      reorderFn.current = (from, to) => {
+        if (from === null || to === null || from === to) return;
+        const blocks = [...(openList.blocks||[])];
+        const dragged = blocks[from];
+        blocks.splice(from, 1);
+        const insertAt = to > from ? to - 1 : to;
+        blocks.splice(insertAt, 0, dragged);
+        updateCurrent(blocks);
+      };
+
+      // Document-level touch listeners — set up once, never lost on re-render
+      React.useEffect(() => {
+        function handleMove(e) {
+          if (dragItem.current === null) return;
+          e.preventDefault();
+          const touch = e.touches[0];
+          if (ghostEl.current) {
+            ghostEl.current.style.top  = (touch.clientY - ghostOffset.current.y) + "px";
+            ghostEl.current.style.left = (touch.clientX - ghostOffset.current.x) + "px";
+          }
+          const allBlocks = document.querySelectorAll("[data-block-idx]");
+          let closest = null, closestDist = Infinity;
+          allBlocks.forEach(el => {
+            const r = el.getBoundingClientRect();
+            const dist = Math.abs(touch.clientY - (r.top + r.height / 2));
+            if (dist < closestDist) { closestDist = dist; closest = el; }
+          });
+          if (closest) {
+            const idx = parseInt(closest.dataset.blockIdx);
+            if (idx !== dragOverItem.current) {
+              dragOverItem.current = idx;
+              setDragOverIdx(idx);
+            }
+          }
+        }
+        function handleEnd() {
+          if (dragItem.current === null) return;
+          if (dragSrcEl.current) { dragSrcEl.current.style.opacity = "1"; dragSrcEl.current = null; }
+          if (ghostEl.current) { try { document.body.removeChild(ghostEl.current); } catch {} ghostEl.current = null; }
+          const from = dragItem.current, to = dragOverItem.current;
+          dragItem.current = null; dragOverItem.current = null;
+          setDragOverIdx(null);
+          reorderFn.current(from, to);
+        }
+        document.addEventListener("touchmove", handleMove, {passive: false});
+        document.addEventListener("touchend",   handleEnd);
+        document.addEventListener("touchcancel", handleEnd);
+        return () => {
+          document.removeEventListener("touchmove", handleMove);
+          document.removeEventListener("touchend",   handleEnd);
+          document.removeEventListener("touchcancel", handleEnd);
+        };
+      }, []);
+
+      // Drag reorder (mouse)
+      function onDragStart(e, idx) {
+        dragItem.current = idx;
+        e.dataTransfer.effectAllowed = "move";
+        e.currentTarget.style.opacity = "0.5";
+      }
+      function onDragEnter(idx) {
+        dragOverItem.current = idx;
+        setDragOverIdx(idx);
+      }
+      function onDragEnd(e) {
+        e.currentTarget.style.opacity = "1";
+        const from = dragItem.current, to = dragOverItem.current;
+        dragItem.current = null; dragOverItem.current = null;
+        setDragOverIdx(null);
+        reorderFn.current(from, to);
+      }
+
+      // Touch: only onTouchStart on element — move/end handled by document listeners above
+      function onTouchStart(e, idx) {
+        dragItem.current = idx;
+        setDragOverIdx(null);
+        const src = e.currentTarget;
+        dragSrcEl.current = src;
+        src.style.opacity = "0.4";
+        const rect = src.getBoundingClientRect();
+        ghostOffset.current = { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+        const clone = src.cloneNode(true);
+        Object.assign(clone.style, {
+          position:"fixed", top:rect.top+"px", left:rect.left+"px",
+          width:rect.width+"px", pointerEvents:"none", zIndex:"9999",
+          opacity:"0.92", borderRadius:"10px", boxShadow:"0 8px 28px rgba(0,0,0,0.22)",
+          transform:"scale(1.04)", transition:"none"
+        });
+        document.body.appendChild(clone);
+        ghostEl.current = clone;
+      }
+
+      const ITEM_COLOR = { green:{bg:"rgba(76,175,125,0.15)",dot:"#4caf7d"}, red:{bg:"rgba(217,83,79,0.15)",dot:"#d9534f"} };
+
+      function buildListText(list) {
+        let lines = [list.name];
+        (list.blocks||[]).forEach(b=>{
+          if (b.type==="subtitle") lines.push("\n▸ "+b.text);
+          else lines.push("• "+b.text);
+        });
+        return lines.join("\n");
+      }
+
+      function downloadAsText(list) {
+        const text = buildListText(list);
+        const blob = new Blob(["﻿" + text], {type:"text/plain;charset=utf-8"});
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement("a");
+        a.href = url; a.download = list.name + ".txt"; a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function exportAsText(list) {
+        const text = buildListText(list);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2000); }).catch(()=>fallbackCopy(text));
+        } else { fallbackCopy(text); }
+      }
+      function fallbackCopy(text) {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        try { document.execCommand("copy"); setCopied(true); setTimeout(()=>setCopied(false),2000); } catch {}
+        document.body.removeChild(ta);
+      }
+
+      function importFromText() {
+        if (!importText.trim() || !openList) return;
+        const lines = importText.split("\n")
+          .map(l=>l.replace(/^[•\-*]\s*/,"").trim())
+          .filter(l=>l.length>0);
+        const newBlocks = lines.map(text=>({id:nextId(),type:"item",text,subtitleId:null}));
+        updateCurrent([...(openList.blocks||[]),...newBlocks]);
+        setImportText(""); setShowImport(false);
+      }
+
+      // ---- DETAIL VIEW ----
+      if (openList) {
+        const current = lists.find(l=>l.id===openList.id)||openList;
+        const blocks = current.blocks||[];
+        const itemCount = blocks.filter(b=>b.type==="item").length;
+
+        // Group for display: subtitles + their items, plus root items
+        const rendered = [];
+        blocks.forEach((block, idx)=>{
+          // drop indicator line
+          if (dragOverIdx !== null && dragOverIdx === idx && dragItem.current !== null && dragItem.current !== idx) {
+            rendered.push(<div key={"di-"+idx} style={{height:3,background:"var(--accent-light)",borderRadius:3,margin:"2px 6px",opacity:0.8}}/>);
+          }
+          if (block.type==="subtitle") {
+            const isCollapsed = collapsedSubs.has(block.id);
+            rendered.push(
+              <div key={block.id}
+                data-block-idx={idx}
+                draggable
+                onDragStart={e=>onDragStart(e,idx)}
+                onDragEnter={()=>onDragEnter(idx)}
+                onDragEnd={onDragEnd}
+                onDragOver={e=>e.preventDefault()}
+                onTouchStart={e=>onTouchStart(e,idx)}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"10px 16px",marginTop:10,marginBottom:2,
+                  background:"linear-gradient(90deg, var(--bg-secondary), var(--bg-primary))",borderRadius:10,border:`1px solid var(--border-color)`,cursor:"grab",transition:"all 0.2s ease"}}>
+                <span style={{color:"var(--text-muted)",fontSize:14,cursor:"grab",transition:"color 0.2s ease"}}>⠿</span>
+                <span onClick={e=>{e.stopPropagation();toggleSubCollapse(block.id);}}
+                  style={{fontSize:13,color:"var(--accent-light)",cursor:"pointer",userSelect:"none",flexShrink:0,transition:"all 0.15s ease",padding:"2px 4px"}}>
+                  {isCollapsed ? "▸" : "▾"}
+                </span>
+                <span style={{fontWeight:800,fontSize:14,color:"var(--accent-light)",flex:1,transition:"color 0.2s ease"}}>{block.text}</span>
+                {!isCollapsed && <button onClick={()=>{setAddingUnder(block.id); setItemInput(""); setTimeout(()=>document.getElementById("add-item-input")?.focus(),50);}}
+                  style={{background:"var(--accent-light)",color:"#fff",border:"none",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>+ פריט</button>}
+                <button onClick={()=>deleteBlock(block.id)}
+                  style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:16,padding:0,transition:"color 0.2s ease"}}>✕</button>
+              </div>
+            );
+            // add-item input under this subtitle
+            if (!isCollapsed && addingUnder===block.id) {
+              rendered.push(
+                <div key={"addinput-"+block.id} style={{display:"flex",gap:8,padding:"6px 8px",background:"var(--bg-secondary)",borderRadius:8,marginBottom:4,border:`1px dashed var(--border-color)`,transition:"all 0.2s ease"}}>
+                  <input id="add-item-input" value={itemInput} onChange={e=>setItemInput(e.target.value)}
+                    onKeyDown={e=>{if(e.key==="Enter")addItem(block.id); if(e.key==="Escape")setAddingUnder(null);}}
+                    placeholder="שם הפריט..." style={{...iStyle,flex:1,marginBottom:0,fontSize:13,padding:"7px 10px"}}/>
+                  <button onClick={()=>addItem(block.id)} style={{background:"var(--accent-light)",color:"#fff",border:"none",borderRadius:8,padding:"7px 12px",fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>הוסף</button>
+                  <button onClick={()=>setAddingUnder(null)} style={{background:"var(--bg-secondary)",color:"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:8,padding:"7px 10px",fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>✕</button>
+                </div>
+              );
+            }
+          } else {
+            // item — skip if its subtitle is collapsed
+            if (block.subtitleId && collapsedSubs.has(block.subtitleId)) return;
+            const c = ITEM_COLOR[block.color];
+            const isEditing = editingId === block.id;
+            rendered.push(
+              <div key={block.id}
+                data-block-idx={idx}
+                draggable={!isEditing}
+                onDragStart={e=>!isEditing&&onDragStart(e,idx)}
+                onDragEnter={()=>onDragEnter(idx)}
+                onDragEnd={onDragEnd}
+                onDragOver={e=>e.preventDefault()}
+                onTouchStart={e=>!isEditing&&onTouchStart(e,idx)}
+                style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",
+                  borderBottom:`1px solid var(--border-color)`,background:c?c.bg:"var(--card-bg)",
+                  transition:"background 0.2s"}}>
+                <span style={{color:"#ccc",fontSize:14,cursor:"grab",flexShrink:0}} onMouseDown={e=>e.stopPropagation()}>⠿</span>
+                <span style={{width:8,height:8,borderRadius:"50%",background:c?c.dot:"#d4c1ec",flexShrink:0,cursor:"pointer"}}
+                  onClick={()=>cycleItemColor(block.id)}/>
+                {isEditing ? (
+                  <input
+                    autoFocus
+                    defaultValue={block.text}
+                    onBlur={e=>commitEdit(block.id, e.target.value)}
+                    onKeyDown={e=>{
+                      if(e.key==="Enter") commitEdit(block.id, e.target.value);
+                      if(e.key==="Escape") setEditingId(null);
+                    }}
+                    onClick={e=>e.stopPropagation()}
+                    style={{flex:1,fontSize:15,color:"var(--text-primary)",border:`1.5px solid var(--border-color)`,borderRadius:8,
+                      padding:"4px 8px",background:"var(--card-bg)",outline:"none",fontFamily:"inherit",direction:"rtl",transition:"all 0.2s ease"}}
+                  />
+                ) : (
+                  <span
+                    style={{flex:1,fontSize:15,color:"var(--text-primary)",userSelect:"none",cursor:"text",transition:"color 0.2s ease"}}
+                    onDoubleClick={e=>{e.stopPropagation();setEditingId(block.id);}}
+                    onClick={()=>cycleItemColor(block.id)}
+                  >{block.text}</span>
+                )}
+                {!isEditing && (
+                  <button onClick={e=>{e.stopPropagation();setEditingId(block.id);}}
+                    style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:14,padding:"0 2px",minWidth:28,minHeight:32,display:"flex",alignItems:"center",justifyContent:"center",transition:"color 0.2s ease"}}>✎</button>
+                )}
+                {!isEditing && blocks.some(b=>b.type==="subtitle") && (
+                  <button onClick={e=>{e.stopPropagation();setMovingItem(block.id);}}
+                    title="העבר לתת-כותרת"
+                    style={{background:"none",border:"none",color:"var(--accent-light)",cursor:"pointer",fontSize:15,padding:"0 2px",minWidth:28,minHeight:32,display:"flex",alignItems:"center",justifyContent:"center",transition:"color 0.2s ease"}}>↗</button>
+                )}
+                <button onClick={e=>{e.stopPropagation();deleteBlock(block.id);}}
+                  style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:18,padding:"0 4px",minWidth:32,minHeight:32,display:"flex",alignItems:"center",justifyContent:"center",transition:"color 0.2s ease"}}>✕</button>
+              </div>
+            );
+          }
+        });
+
+        return (
+          <div>
+            <button onClick={()=>{setOpenList(null);setItemInput("");setShowImport(false);setImportText("");setAddingUnder(null);setShowAddSub(false);}}
+              style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:"var(--accent-light)",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:16,padding:0,transition:"color 0.2s ease"}}>
+              ← חזרה לרשימות
+            </button>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+              <span style={{fontSize:28}}>{current.emoji||"📋"}</span>
+              <h2 style={{fontSize:20,fontWeight:800,color:"var(--text-primary)",transition:"color 0.2s ease"}}>{current.name}</h2>
+              <span style={{fontSize:12,color:"var(--text-muted)",background:"var(--bg-secondary)",borderRadius:20,padding:"2px 10px",transition:"all 0.2s ease"}}>{itemCount} פריטים</span>
+            </div>
+
+            <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+              <button onClick={()=>exportAsText(current)} style={{display:"inline-flex",alignItems:"center",gap:5,background:copied?"#e3fded":"#e8f0fb",color:copied?"#2e7d32":"#3a5fa0",border:`1.5px solid ${copied?"#a5d6a7":"#b0c4e8"}`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>{copied?"✅ הועתק!":"📋 העתק לטקסט"}</button>
+              <button onClick={()=>downloadAsText(current)} style={{display:"inline-flex",alignItems:"center",gap:5,background:"rgba(74, 122, 32, 0.1)",color:"#4a7a20",border:"1.5px solid #b8d98a",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>⬇ הורד טקסט</button>
+              <button onClick={()=>{const text=buildListText(current);window.open("https://wa.me/?text="+encodeURIComponent(text),"_blank");}} style={{display:"inline-flex",alignItems:"center",gap:5,background:"rgba(46, 125, 50, 0.1)",color:"#2e7d32",border:"1.5px solid #a5d6a7",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>💬 ווצאפ</button>
+              <button onClick={()=>setShowImport(v=>!v)} style={{display:"inline-flex",alignItems:"center",gap:5,background:showImport?"var(--accent-light)":"var(--bg-secondary)",color:showImport?"#fff":"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>⬆ טען מטקסט</button>
+            </div>
+
+            {showImport && (
+              <div style={{background:"var(--card-bg)",border:`2px solid var(--border-color)`,borderRadius:14,padding:16,marginBottom:16,transition:"all 0.2s ease"}}>
+                <div style={{fontSize:13,color:"var(--text-secondary)",marginBottom:8,transition:"color 0.2s ease"}}>הדביקי טקסט — כל שורה תהפוך לפריט:</div>
+                <textarea value={importText} onChange={e=>setImportText(e.target.value)} placeholder={"פריט ראשון\nפריט שני\nפריט שלישי..."} rows={5} style={{...iStyle,resize:"vertical",minHeight:100}} autoFocus/>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={importFromText} style={{flex:1,background:"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))",color:"#fff",border:"none",borderRadius:10,padding:"10px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>+ הוסף לרשימה</button>
+                  <button onClick={()=>{setShowImport(false);setImportText("");}} style={{flex:1,background:"var(--bg-secondary)",color:"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"10px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>ביטול</button>
+                </div>
+              </div>
+            )}
+
+            {/* Add subtitle */}
+            {showAddSub ? (
+              <div style={{display:"flex",gap:8,marginBottom:12,background:"var(--bg-secondary)",borderRadius:10,padding:"10px",border:`1.5px dashed var(--border-color)`,transition:"all 0.2s ease"}}>
+                <input value={subtitleInput} onChange={e=>setSubtitleInput(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter")addSubtitle();if(e.key==="Escape")setShowAddSub(false);}}
+                  placeholder="שם התת-כותרת..." style={{...iStyle,flex:1,marginBottom:0}} autoFocus/>
+                <button onClick={addSubtitle} style={{background:"#7b3fa0",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>הוסף</button>
+                <button onClick={()=>setShowAddSub(false)} style={{background:"var(--bg-secondary)",color:"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:8,padding:"8px 10px",fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>✕</button>
+              </div>
+            ) : (
+              <div style={{display:"flex",gap:8,marginBottom:12}}>
+                <button onClick={()=>{setShowAddSub(true);setShowAddSub(true);}} style={{display:"inline-flex",alignItems:"center",gap:5,background:"rgba(123, 63, 160, 0.1)",color:"#7b3fa0",border:"1.5px solid #d4b0e0",borderRadius:8,padding:"7px 14px",fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>▸ + תת-כותרת</button>
+              </div>
+            )}
+
+            {/* Add root item */}
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              <input value={addingUnder===null||addingUnder==="root"?itemInput:""} 
+                onChange={e=>{setAddingUnder("root");setItemInput(e.target.value);}}
+                onKeyDown={e=>e.key==="Enter"&&addItem(null)}
+                placeholder="הוסיפי פריט לרשימה..."
+                style={{...iStyle,flex:1,marginBottom:0}}/>
+              <button onClick={()=>{setAddingUnder("root");addItem(null);}} style={{background:"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))",color:"#fff",border:"none",borderRadius:10,padding:"10px 16px",fontWeight:700,fontSize:14,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.2s ease"}}>+ הוסף</button>
+            </div>
+
+            {blocks.length===0 ? (
+              <div style={{textAlign:"center",color:"var(--text-muted)",padding:40,fontSize:14,transition:"color 0.2s ease"}}>הרשימה ריקה — הוסיפי פריטים ✦</div>
+            ) : (
+              <div style={{background:"var(--card-bg)",borderRadius:14,border:`1.5px solid var(--border-color)`,overflow:"hidden",transition:"all 0.2s ease"}}>
+                {rendered}
+              </div>
+            )}
+
+            <div style={{marginTop:12,fontSize:11,color:"var(--text-muted)",textAlign:"center",transition:"color 0.2s ease"}}>💡 לחצי ↗ על פריט להעברתו לתת-כותרת אחרת</div>
+
+            {movingItem && (
+              <div onClick={()=>setMovingItem(null)}
+                style={{position:"fixed",inset:0,zIndex:199,background:"rgba(0,0,0,0.35)"}}/>
+            )}
+            {movingItem && (
+              <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:200,background:"var(--card-bg)",
+                borderRadius:"20px 20px 0 0",boxShadow:"0 -4px 30px rgba(0,0,0,0.2)",padding:"20px 16px 32px",
+                maxHeight:"70vh",overflowY:"auto"}}>
+                <div style={{fontWeight:800,fontSize:16,marginBottom:14,color:"var(--text-primary)"}}>העבר אל:</div>
+                {blocks.filter(b=>b.type==="subtitle").map(sub=>(
+                  <button key={sub.id} onClick={()=>moveItemTo(movingItem, sub.id)}
+                    style={{display:"block",width:"100%",textAlign:"right",background:"var(--bg-secondary)",
+                      border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"11px 16px",
+                      marginBottom:8,fontWeight:700,fontSize:15,cursor:"pointer",color:"var(--accent-light)"}}>
+                    ▸ {sub.text}
+                  </button>
+                ))}
+                <button onClick={()=>moveItemTo(movingItem, null)}
+                  style={{display:"block",width:"100%",textAlign:"right",background:"var(--bg-secondary)",
+                    border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"11px 16px",
+                    marginBottom:8,fontWeight:700,fontSize:15,cursor:"pointer",color:"var(--text-secondary)"}}>
+                  ללא תת-כותרת (סוף הרשימה)
+                </button>
+                <button onClick={()=>setMovingItem(null)}
+                  style={{display:"block",width:"100%",background:"none",border:"none",
+                    color:"var(--text-muted)",fontSize:14,padding:"8px",cursor:"pointer"}}>
+                  ביטול
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // ---- HOME VIEW ----
+      return (
+        <div>
+          {!openList && (
+            <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+              <button onClick={exportLists} style={tbBtn("rgba(58, 95, 160, 0.1)","#3a5fa0","#b0c4e8")}>⬇ ייצוא גיבוי</button>
+              <button onClick={()=>setShowImportLists(true)} style={tbBtn("var(--bg-secondary)","var(--accent-light)","var(--border-color)")}>⬆ טעינת גיבוי</button>
+            </div>
+          )}
+          {!showNewList ? (
+            <button onClick={()=>setShowNewList(true)} style={{width:"100%",background:"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:15,fontWeight:700,cursor:"pointer",marginBottom:16,boxShadow:"var(--shadow-md)",transition:"all 0.2s ease"}}>+ צור רשימה חדשה</button>
+          ) : (
+            <div style={{background:"var(--card-bg)",border:`2px solid var(--border-color)`,borderRadius:16,padding:20,marginBottom:16,boxShadow:"var(--shadow-lg)",transition:"all 0.2s ease"}}>
+              <div style={{fontWeight:800,fontSize:16,color:"var(--text-primary)",marginBottom:14,transition:"color 0.2s ease"}}>+ רשימה חדשה</div>
+              <input value={newListName} onChange={e=>setNewListName(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&addList()}
+                placeholder='שם הרשימה, למשל: "אוכל לשבת", "ציוד לטיול"...'
+                style={iStyle} autoFocus/>
+              <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:8,transition:"color 0.2s ease"}}>בחרי אייקון:</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
+                {EMOJIS.map(em=>(
+                  <button key={em} onClick={()=>setNewListEmoji(em)} style={{background:newListEmoji===em?"var(--accent-light)":"var(--bg-secondary)",border:`2px solid ${newListEmoji===em?"var(--accent-light)":"var(--border-color)"}`,borderRadius:8,padding:"6px 10px",fontSize:20,cursor:"pointer",transition:"all 0.2s ease"}}>{em}</button>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={addList} style={{flex:1,background:"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))",color:"#fff",border:"none",borderRadius:10,padding:"11px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>צור</button>
+                <button onClick={()=>{setShowNewList(false);setNewListName("");}} style={{flex:1,background:"var(--bg-secondary)",color:"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"11px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>ביטול</button>
+              </div>
+            </div>
+          )}
+
+          {lists.length===0 ? (
+            <div style={{textAlign:"center",color:"var(--text-muted)",padding:50,fontSize:14,transition:"color 0.2s ease"}}>
+              <div style={{fontSize:40,marginBottom:12}}>📋</div>
+              <div>אין רשימות עדיין</div>
+              <div style={{fontSize:12,marginTop:6}}>צרי רשימה חדשה למעלה</div>
+            </div>
+          ) : (
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              {lists.map((list, idx)=>{
+                const itemCount = (list.blocks||list.items||[]).filter(b=>!b.type||b.type==="item").length;
+                return (
+                  <div key={list.id}
+                    draggable
+                    onDragStart={e=>onListDragStart(e, idx)}
+                    onDragEnter={()=>onListDragEnterCard(idx)}
+                    onDragEnd={onListDragEnd}
+                    onDragOver={e=>e.preventDefault()}
+                    onClick={()=>setOpenList({...list,blocks:list.blocks||[]})}
+                    style={{background:"var(--card-bg)",border:listDragOver===idx?`2px solid var(--accent-light)`:`1.5px solid var(--border-color)`,borderRadius:16,padding:"18px 16px",cursor:"grab",boxShadow:listDragOver===idx?"var(--shadow-md)":"var(--shadow-sm)",position:"relative",transition:"all 0.2s ease",opacity:listDragOver===idx?0.75:1}}>
+                    <button onClick={e=>{e.stopPropagation();deleteList(list.id);}} style={{position:"absolute",top:4,left:4,background:"rgba(0,0,0,0.06)",border:"none",color:"#aaa",cursor:"pointer",fontSize:14,width:32,height:32,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s ease"}}>✕</button>
+                    <div style={{fontSize:32,marginBottom:8}}>{list.emoji||"📋"}</div>
+                    <div style={{fontWeight:800,fontSize:15,color:"var(--text-primary)",marginBottom:4,transition:"color 0.2s ease"}}>{list.name}</div>
+                    <div style={{fontSize:12,color:"var(--text-muted)",transition:"color 0.2s ease"}}>{itemCount} פריטים</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+
+    function TagBadge({ tag, onRemove }) {
+      return (
+        <span style={{display:"inline-flex",alignItems:"center",gap:4,background:"var(--bg-secondary)",color:"var(--text-primary)",borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:600,border:`1px solid var(--border-color)`,transition:"all 0.2s ease"}}>
+          {tag}
+          {onRemove&&<span onClick={onRemove} style={{cursor:"pointer",opacity:0.5,marginRight:2,fontSize:14}}>×</span>}
+        </span>
+      );
+    }
+
+    function TaskCard({ task, onToggle, onDelete, onEdit, onCalendar }) {
+      const s = STATUS_MAP[task.status];
+      return (
+        <div style={{background:task.status==="done"?"var(--bg-secondary)":"var(--card-bg)",border:`1.5px solid var(--border-color)`,borderRadius:14,padding:"14px 16px",marginBottom:10,opacity:task.status==="done"?0.7:1,boxShadow:task.status!=="done"?"var(--shadow-sm)":"none",transition:"all 0.2s ease"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <span style={{fontWeight:700,fontSize:15,textDecoration:task.status==="done"?"line-through":"none",color:task.status==="done"?"var(--text-muted)":"var(--text-primary)"}}>{task.title}</span>
+                <span style={{fontSize:11,fontWeight:700,padding:"2px 9px",borderRadius:20,background:s.bg,color:s.color,border:`1px solid ${s.color}40`}}>{s.label}</span>
+              </div>
+              {task.description&&<div style={{color:"var(--text-secondary)",fontSize:13,marginTop:4}}>{task.description}</div>}
+              <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:7,alignItems:"center"}}>
+                {(task.tags||[]).map(t=><TagBadge key={t} tag={t}/>)}
+                {task.dueDate&&(
+                  <span style={{fontSize:11,color:"var(--text-muted)",background:"var(--bg-secondary)",borderRadius:20,padding:"2px 9px",transition:"all 0.2s ease"}}>
+                    📅 {task.dueDate}{task.dueTime ? " · "+task.dueTime : ""}
+                  </span>
+                )}
+                {task.dueDate&&(
+                  <button onClick={()=>onCalendar(task)} style={{display:"inline-flex",alignItems:"center",gap:3,background:"rgba(58, 95, 160, 0.1)",color:"#3a5fa0",border:"1.5px solid #b0c4e8",borderRadius:20,padding:"2px 9px",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>
+                    📆 יומן גוגל
+                  </button>
+                )}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6,flexShrink:0}}>
+              <button onClick={()=>onToggle(task.id)} style={iconBtn("#e8f4ec","#4caf7d")}>↻</button>
+              <button onClick={()=>onEdit(task)}      style={iconBtn("#e8eef4","#4a7cbf")}>✎</button>
+              <button onClick={()=>onDelete(task.id)} style={iconBtn("#fce8e8","#d9534f")}>✕</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* ===== SHOPPING DRAG LIST ===== */
+    function ShoppingDragList({ shopping, setShopping, shopCats, orderedCats, groupedShopping, toggleShop, deleteShopItem, CAT_EMOJIS, iStyle }) {
+      const dragItemId   = React.useRef(null);
+      const dragOverCat  = React.useRef(null);
+      const ghostEl      = React.useRef(null);
+      const [dragging,       setDragging]       = React.useState(null);
+      const [overCat,        setOverCat]        = React.useState(null);
+      const [movingShopItem, setMovingShopItem] = React.useState(null);
+
+      function onDragStart(e, itemId) {
+        dragItemId.current = itemId;
+        setDragging(itemId);
+        e.dataTransfer.effectAllowed = "move";
+        const el = e.currentTarget;
+        e.dataTransfer.setDragImage(el, el.offsetWidth/2, el.offsetHeight/2);
+      }
+      function onDragEnd() {
+        setDragging(null);
+        setOverCat(null);
+        dragItemId.current = null;
+        dragOverCat.current = null;
+      }
+      function onCatDragOver(e, cat) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        dragOverCat.current = cat;
+        setOverCat(cat);
+      }
+      function onCatDragLeave() {
+        dragOverCat.current = null;
+        setOverCat(null);
+      }
+      function onCatDrop(e, cat) {
+        e.preventDefault();
+        const id = dragItemId.current;
+        if (!id) return;
+        setShopping(s => s.map(i => i.id===id ? {...i, category:cat} : i));
+        setDragging(null);
+        setOverCat(null);
+        dragItemId.current = null;
+        dragOverCat.current = null;
+      }
+
+      // Touch drag (mobile) — document-level listeners so touchend is never lost
+      const touchOffset = React.useRef({x:0, y:0});
+      const touchSrcEl  = React.useRef(null);
+
+      React.useEffect(() => {
+        function handleMove(e) {
+          if (!dragItemId.current) return;
+          e.preventDefault();
+          const touch = e.touches[0];
+          if (ghostEl.current) {
+            ghostEl.current.style.top  = (touch.clientY - touchOffset.current.y) + "px";
+            ghostEl.current.style.left = (touch.clientX - touchOffset.current.x) + "px";
+          }
+          // find category under finger via elementFromPoint
+          if (ghostEl.current) ghostEl.current.style.display = "none";
+          const target = document.elementFromPoint(touch.clientX, touch.clientY);
+          if (ghostEl.current) ghostEl.current.style.display = "";
+          if (!target) return;
+          let node = target;
+          while (node && node !== document.body) {
+            if (node.dataset && node.dataset.cat !== undefined) {
+              const cat = node.dataset.cat;
+              if (cat !== dragOverCat.current) { dragOverCat.current = cat; setOverCat(cat); }
+              return;
+            }
+            node = node.parentElement;
+          }
+          if (dragOverCat.current !== null) { dragOverCat.current = null; setOverCat(null); }
+        }
+        function handleEnd() {
+          if (!dragItemId.current) return;
+          if (touchSrcEl.current) { touchSrcEl.current.style.opacity = "1"; touchSrcEl.current = null; }
+          if (ghostEl.current) { try { document.body.removeChild(ghostEl.current); } catch {} ghostEl.current = null; }
+          const id = dragItemId.current, cat = dragOverCat.current;
+          dragItemId.current = null; dragOverCat.current = null;
+          setDragging(null); setOverCat(null);
+          if (id && cat) setShopping(s => s.map(i => i.id===id ? {...i, category:cat} : i));
+        }
+        document.addEventListener("touchmove",   handleMove, {passive: false});
+        document.addEventListener("touchend",     handleEnd);
+        document.addEventListener("touchcancel",  handleEnd);
+        return () => {
+          document.removeEventListener("touchmove",  handleMove);
+          document.removeEventListener("touchend",   handleEnd);
+          document.removeEventListener("touchcancel", handleEnd);
+        };
+      }, []);
+
+      function onTouchStart(e, itemId) {
+        dragItemId.current = itemId;
+        setDragging(itemId);
+        const src = e.currentTarget;
+        touchSrcEl.current = src;
+        src.style.opacity = "0.4";
+        const rect = src.getBoundingClientRect();
+        touchOffset.current = { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+        const clone = src.cloneNode(true);
+        Object.assign(clone.style, {
+          position:"fixed", top:rect.top+"px", left:rect.left+"px",
+          width:rect.width+"px", pointerEvents:"none", zIndex:"9999",
+          opacity:"0.92", borderRadius:"10px", boxShadow:"0 8px 28px rgba(0,0,0,0.22)",
+          transform:"scale(1.04)", transition:"none"
+        });
+        document.body.appendChild(clone);
+        ghostEl.current = clone;
+      }
+
+      return (
+        <div>
+          {orderedCats.map(cat => {
+            const isOver = overCat === cat;
+            return (
+              <div key={cat}
+                data-cat={cat}
+                onDragOver={e => onCatDragOver(e, cat)}
+                onDragLeave={onCatDragLeave}
+                onDrop={e => onCatDrop(e, cat)}
+                style={{marginBottom:14, borderRadius:12, transition:"box-shadow 0.2s ease",
+                  boxShadow: isOver ? `0 0 0 2.5px var(--accent-light)` : "none"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 14px",marginBottom:4,
+                  background: isOver ? "linear-gradient(90deg, var(--border-color), var(--bg-secondary))" : "linear-gradient(90deg, var(--bg-secondary), var(--bg-primary))",
+                  borderRadius:10, border:`1px solid ${isOver?"var(--accent-light)":"var(--border-color)"}`, transition:"all 0.2s ease"}}>
+                  <span style={{fontSize:18}}>{CAT_EMOJIS[cat]||"🔹"}</span>
+                  <span style={{fontWeight:800,fontSize:14,color:"var(--accent-light)",transition:"color 0.2s ease"}}>{cat}</span>
+                  <span style={{fontSize:12,color:"var(--text-muted)",marginRight:"auto",transition:"color 0.2s ease"}}>{groupedShopping[cat].filter(i=>i.checked).length}/{groupedShopping[cat].length}</span>
+                  {isOver && <span style={{fontSize:11,color:"var(--accent-light)",fontWeight:700,background:"var(--bg-secondary)",borderRadius:20,padding:"1px 8px",transition:"all 0.2s ease"}}>שחרר כאן ⬆</span>}
+                </div>
+                <div style={{background:"var(--card-bg)",borderRadius:12,border:`1.5px solid ${isOver?"var(--accent-light)":"var(--border-color)"}`,overflow:"hidden",minHeight:isOver&&groupedShopping[cat].length===0?40:0,transition:"all 0.2s ease"}}>
+                  {groupedShopping[cat].length===0 && isOver && (
+                    <div style={{padding:"10px 16px",color:"var(--text-muted)",fontSize:13,fontStyle:"italic",textAlign:"center",transition:"color 0.2s ease"}}>שחרר כאן להעברה</div>
+                  )}
+                  {groupedShopping[cat].map((item,idx)=>(
+                    <div key={item.id}
+                      draggable
+                      onDragStart={e=>onDragStart(e,item.id)}
+                      onDragEnd={onDragEnd}
+                      onTouchStart={e=>onTouchStart(e,item.id)}
+                      style={{display:"flex",alignItems:"center",gap:12,padding:"11px 16px",
+                        borderBottom:idx<groupedShopping[cat].length-1?`1px solid var(--border-color)`:"none",
+                        background:dragging===item.id?"var(--bg-secondary)":item.checked?"var(--bg-primary)":"var(--card-bg)",
+                        opacity:dragging===item.id?0.5:1,
+                        cursor:"grab", userSelect:"none", transition:"all 0.15s ease"}}>
+                      <span style={{color:"var(--border-color)",fontSize:15,cursor:"grab",flexShrink:0,transition:"color 0.2s ease"}}>⠿</span>
+                      <input type="checkbox" checked={item.checked} onChange={()=>toggleShop(item.id)}
+                        onClick={e=>e.stopPropagation()}
+                        style={{width:18,height:18,cursor:"pointer",accentColor:"var(--accent-light)",flexShrink:0}}/>
+                      <span style={{flex:1,fontSize:15,fontWeight:600,color:item.checked?"var(--text-muted)":"var(--text-primary)",textDecoration:item.checked?"line-through":"none",transition:"all 0.2s ease"}}>{item.name}</span>
+                      {item.qty&&<span style={{fontSize:12,color:"var(--text-secondary)",background:"var(--bg-secondary)",borderRadius:20,padding:"2px 10px",fontWeight:600,transition:"all 0.2s ease"}}>{item.qty}</span>}
+                      {orderedCats.length > 1 && (
+                        <button onClick={e=>{e.stopPropagation();setMovingShopItem(item.id);}} title="העבר לקטגוריה"
+                          style={{background:"none",border:"none",color:"var(--accent-light)",cursor:"pointer",fontSize:15,padding:"0 2px",transition:"color 0.2s ease"}}>↗</button>
+                      )}
+                      <button onClick={()=>deleteShopItem(item.id)} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:18,padding:0,transition:"color 0.2s ease"}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        {movingShopItem && <div onClick={()=>setMovingShopItem(null)}
+          style={{position:"fixed",inset:0,zIndex:199,background:"rgba(0,0,0,0.35)"}}/>}
+        {movingShopItem && (
+          <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:200,background:"var(--card-bg)",
+            borderRadius:"20px 20px 0 0",boxShadow:"0 -4px 30px rgba(0,0,0,0.2)",padding:"20px 16px 32px",maxHeight:"70vh",overflowY:"auto"}}>
+            <div style={{fontWeight:800,fontSize:16,marginBottom:14,color:"var(--text-primary)"}}>העבר לקטגוריה:</div>
+            {orderedCats.map(c=>(
+              <button key={c} onClick={()=>{setShopping(s=>s.map(i=>i.id===movingShopItem?{...i,category:c}:i));setMovingShopItem(null);}}
+                style={{display:"block",width:"100%",textAlign:"right",background:"var(--bg-secondary)",
+                  border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"11px 16px",
+                  marginBottom:8,fontWeight:700,fontSize:15,cursor:"pointer",color:"var(--accent-light)"}}>
+                {CAT_EMOJIS[c]||"🔹"} {c}
+              </button>
+            ))}
+            <button onClick={()=>setMovingShopItem(null)}
+              style={{display:"block",width:"100%",background:"none",border:"none",color:"var(--text-muted)",fontSize:14,padding:"8px",cursor:"pointer"}}>
+              ביטול
+            </button>
+          </div>
+        )}
+        </div>
+      );
+    }
+
+    function SyncModal({ currentRoomId, onConnect, onDisconnect, onClose }) {
+      const hasSavedConfig = !!localStorage.getItem("firebase_config");
+      const [view, setView] = React.useState(currentRoomId ? "connected" : (hasSavedConfig ? "room" : "setup"));
+      const [configText, setConfigText] = React.useState(localStorage.getItem("firebase_config") || "");
+      const [roomInput, setRoomInput] = React.useState("");
+      const [error, setError] = React.useState("");
+      const [copied, setCopied] = React.useState(false);
+
+      function validateConfig(text) {
+        try { const c = JSON.parse(text); return !!(c.apiKey && c.databaseURL); } catch { return false; }
+      }
+      function genRoomId() { return Math.random().toString(36).slice(2,8).toUpperCase(); }
+      function copyRoom() {
+        if (navigator.clipboard) navigator.clipboard.writeText(currentRoomId).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+      }
+
+      function doConnect(rid) {
+        if (!validateConfig(configText)) { setError("הגדרות Firebase לא תקינות — ודאי שכוללות apiKey ו-databaseURL"); return; }
+        localStorage.setItem("firebase_config", configText);
+        onConnect(JSON.parse(configText), rid);
+      }
+
+      if (view === "connected") return (
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal-box" onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:18,color:"#3a7d44",marginBottom:6}}>☁️ מחובר לענן ✓</div>
+            <div style={{color:"var(--text-secondary)",fontSize:13,marginBottom:16}}>הנתונים מסונכרנים בזמן אמת עם כל המכשירים בחדר זה.</div>
+            <div style={{background:"var(--bg-secondary)",borderRadius:12,padding:16,marginBottom:16,textAlign:"center",border:`1.5px solid var(--border-color)`}}>
+              <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:8}}>קוד החדר שלך:</div>
+              <div style={{fontSize:30,fontWeight:800,letterSpacing:8,color:"var(--accent-brown)",fontFamily:"monospace"}}>{currentRoomId}</div>
+              <button onClick={copyRoom} style={{marginTop:10,background:copied?"#e3fded":"var(--bg-primary)",color:copied?"#2e7d32":"var(--accent-light)",border:`1.5px solid ${copied?"#a5d6a7":"var(--border-color)"}`,borderRadius:8,padding:"6px 16px",fontWeight:700,fontSize:13,cursor:"pointer",transition:"all 0.2s ease"}}>
+                {copied ? "✅ הועתק!" : "📋 העתק קוד"}
+              </button>
+            </div>
+            <div style={{color:"var(--text-secondary)",fontSize:12,marginBottom:20,textAlign:"center"}}>
+              שתפי את קוד החדר עם כל מי שאת רוצה שישתמש בנתונים האלה
+            </div>
+            <button onClick={onDisconnect} style={{width:"100%",background:"rgba(217,83,79,0.1)",color:"#d9534f",border:"1.5px solid #f5c0c0",borderRadius:10,padding:"11px",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:8,transition:"all 0.2s ease"}}>🔌 התנתק מהענן</button>
+            <button onClick={onClose} style={{width:"100%",background:"var(--bg-secondary)",color:"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"10px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>סגור</button>
+          </div>
+        </div>
+      );
+
+      if (view === "setup") return (
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal-box" onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:18,color:"var(--text-primary)",marginBottom:4}}>☁️ הגדרת סנכרון ענן</div>
+            <div style={{color:"var(--text-secondary)",fontSize:13,marginBottom:12}}>
+              לסנכרון בין מכשירים נדרש חשבון Firebase חינמי.{" "}
+              <a href="https://console.firebase.google.com" target="_blank" style={{color:"var(--accent-light)"}}>פתחי פרויקט ←</a>
+            </div>
+            <div style={{background:"var(--bg-secondary)",borderRadius:10,padding:12,marginBottom:12,fontSize:12,color:"var(--text-secondary)",lineHeight:1.7}}>
+              <b>הוראות מהירות (5 דקות):</b><br/>
+              1. כנסי ל-console.firebase.google.com<br/>
+              2. צרי פרויקט חדש → Realtime Database → צרי מסד נתונים<br/>
+              3. ב-Rules שנה ל: <code style={{background:"var(--card-bg)",padding:"1px 5px",borderRadius:4,direction:"ltr",display:"inline-block"}}>{'{"rules":{".read":true,".write":true}}'}</code><br/>
+              4. הגדרות (⚙) → הוסיפי אפליקציית Web → העתיקי את firebaseConfig
+            </div>
+            <textarea value={configText} onChange={e=>{setConfigText(e.target.value);setError("");}}
+              placeholder={'{\n  "apiKey": "...",\n  "databaseURL": "https://....firebaseio.com",\n  ...\n}'}
+              rows={6} style={{...iStyle,resize:"vertical",fontFamily:"monospace",fontSize:12,direction:"ltr"}}/>
+            {error && <div style={{color:"#d9534f",fontSize:13,marginBottom:10}}>{error}</div>}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>doConnect(genRoomId())} style={{flex:1,background:"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))",color:"#fff",border:"none",borderRadius:10,padding:"11px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>✨ צרי חדר חדש</button>
+              <button onClick={()=>setView("room")} style={{flex:1,background:"var(--bg-secondary)",color:"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"11px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>הצטרפי לחדר קיים</button>
+            </div>
+            <button onClick={onClose} style={{width:"100%",marginTop:8,background:"var(--bg-secondary)",color:"var(--text-muted)",border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"10px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>ביטול</button>
+          </div>
+        </div>
+      );
+
+      return (
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal-box" onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:18,color:"var(--text-primary)",marginBottom:12}}>☁️ הצטרפות לחדר קיים</div>
+            {!hasSavedConfig && (
+              <textarea value={configText} onChange={e=>{setConfigText(e.target.value);setError("");}}
+                placeholder={'{\n  "apiKey": "...",\n  "databaseURL": "https://....firebaseio.com",\n  ...\n}'}
+                rows={5} style={{...iStyle,resize:"vertical",fontFamily:"monospace",fontSize:12,direction:"ltr"}}/>
+            )}
+            <input value={roomInput} onChange={e=>{setRoomInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""));setError("");}}
+              placeholder="הזיני קוד חדר (6 תווים)"
+              maxLength={6}
+              style={{...iStyle,fontFamily:"monospace",fontSize:22,letterSpacing:8,textAlign:"center"}}/>
+            {error && <div style={{color:"#d9534f",fontSize:13,marginBottom:10}}>{error}</div>}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{ if(!roomInput||roomInput.length<4){setError("קוד חדר לא תקין");return;} doConnect(roomInput);}} style={{flex:1,background:"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))",color:"#fff",border:"none",borderRadius:10,padding:"11px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>הצטרפי</button>
+              <button onClick={()=>setView("setup")} style={{background:"var(--bg-secondary)",color:"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"11px 14px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>← חזרה</button>
+            </div>
+            <button onClick={onClose} style={{width:"100%",marginTop:8,background:"var(--bg-secondary)",color:"var(--text-muted)",border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"10px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>ביטול</button>
+          </div>
+        </div>
+      );
+    }
+
+    function AutoBackupBanner({ onBackup, onSnooze, onRestore, backupDays, onChangeDays, daysSince }) {
+      const [showSettings, setShowSettings] = React.useState(false);
+      return (
+        <div style={{background:"linear-gradient(135deg, #ff6a22, #ff8c50)",color:"#ffffff",borderRadius:12,padding:"12px 16px",marginBottom:16,boxShadow:"var(--shadow-md)",animation:"fadeIn 0.3s ease"}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>
+            💾 לא גיבית מזה {Math.floor(daysSince)} ימים — מומלץ לגבות עכשיו
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+            <button onClick={onBackup} style={{background:"#ffffff",color:"#3d1a07",border:"none",borderRadius:8,padding:"7px 16px",fontWeight:800,fontSize:13,cursor:"pointer",transition:"all 0.2s ease"}}>
+              💾 גבה עכשיו
+            </button>
+            <button onClick={onSnooze} style={{background:"rgba(255,255,255,0.15)",color:"#ffffff",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"7px 12px",fontWeight:700,fontSize:13,cursor:"pointer",transition:"all 0.2s ease"}}>
+              אחר כך
+            </button>
+            <button onClick={onRestore} style={{background:"transparent",color:"#c4a882",border:"none",fontSize:12,cursor:"pointer",padding:"7px 4px",transition:"color 0.2s ease"}}>
+              📂 שחזר
+            </button>
+            <button onClick={()=>setShowSettings(v=>!v)} style={{background:"transparent",color:"#c4a882",border:"none",fontSize:12,cursor:"pointer",padding:"7px 4px",transition:"color 0.2s ease"}}>
+              ⚙ תדירות
+            </button>
+          </div>
+          {showSettings&&(
+            <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:13}}>גבה כל:</span>
+              {[3,7,14,30].map(d=>(
+                <button key={d} onClick={()=>{onChangeDays(d);setShowSettings(false);}} style={{
+                  background:backupDays===d?"#ffffff":"rgba(255,255,255,0.15)",
+                  color:backupDays===d?"#004080":"#ffffff",
+                  border:"none",borderRadius:8,padding:"4px 12px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"
+                }}>{d} ימים</button>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function App() {
+      const [tab, setTab] = useState("tasks");
+      const [tasks,    setTasks]    = useLocalStorage(STORAGE_KEY_TASKS, []);
+      const [shopping, setShopping] = useLocalStorage(STORAGE_KEY_SHOPPING, []);
+      const [tags,     setTags]     = useLocalStorage(STORAGE_KEY_TAGS, DEFAULT_TAGS);
+      const [shopCats, setShopCats] = useLocalStorage(STORAGE_KEY_SHOP_CATS, DEFAULT_SHOP_CATS);
+      const [pantry,   setPantry]   = useLocalStorage(STORAGE_KEY_PANTRY, []);
+      const [lists,    setLists]    = useLocalStorage(STORAGE_KEY_LISTS, []);
+      const [reminderTask, setReminderTask] = useState(null);
+      const reminderCheckRef = useRef(null);
+
+      // ===== CLOUD SYNC =====
+      const [syncRoomId, setSyncRoomId] = useState(null);
+      const [showSyncModal, setShowSyncModal] = useState(false);
+      const fbReceivedRef = useRef({});
+
+      // Init sync from saved config on startup
+      useEffect(() => {
+        const savedConfig = localStorage.getItem("firebase_config");
+        const savedRoom   = localStorage.getItem("sync_room_id");
+        if (savedConfig && savedRoom) {
+          try { SyncManager.init(JSON.parse(savedConfig), savedRoom); setSyncRoomId(savedRoom); }
+          catch(e) { console.warn("Sync init failed:", e); }
+        }
+      }, []);
+
+      // Listen to Firebase on connect
+      useEffect(() => {
+        if (!syncRoomId) return;
+        const dataMap = [
+          [STORAGE_KEY_TASKS,     setTasks],
+          [STORAGE_KEY_SHOPPING,  setShopping],
+          [STORAGE_KEY_TAGS,      setTags],
+          [STORAGE_KEY_SHOP_CATS, setShopCats],
+          [STORAGE_KEY_PANTRY,    setPantry],
+          [STORAGE_KEY_LISTS,     setLists],
+        ];
+        dataMap.forEach(([key, setter]) => {
+          SyncManager.listen(key, value => {
+            fbReceivedRef.current[key] = value;
+            setter(value);
+          });
+        });
+        return () => SyncManager.disconnect();
+      }, [syncRoomId]);
+
+      // Push local changes to Firebase (skip if value just came from Firebase)
+      useEffect(() => { if (!syncRoomId || fbReceivedRef.current[STORAGE_KEY_TASKS]    === tasks)    return; SyncManager.save(STORAGE_KEY_TASKS,    tasks);    }, [tasks,    syncRoomId]);
+      useEffect(() => { if (!syncRoomId || fbReceivedRef.current[STORAGE_KEY_SHOPPING] === shopping) return; SyncManager.save(STORAGE_KEY_SHOPPING, shopping); }, [shopping, syncRoomId]);
+      useEffect(() => { if (!syncRoomId || fbReceivedRef.current[STORAGE_KEY_TAGS]     === tags)     return; SyncManager.save(STORAGE_KEY_TAGS,     tags);     }, [tags,     syncRoomId]);
+      useEffect(() => { if (!syncRoomId || fbReceivedRef.current[STORAGE_KEY_SHOP_CATS]=== shopCats) return; SyncManager.save(STORAGE_KEY_SHOP_CATS,shopCats);  }, [shopCats, syncRoomId]);
+      useEffect(() => { if (!syncRoomId || fbReceivedRef.current[STORAGE_KEY_PANTRY]   === pantry)   return; SyncManager.save(STORAGE_KEY_PANTRY,   pantry);   }, [pantry,   syncRoomId]);
+      useEffect(() => { if (!syncRoomId || fbReceivedRef.current[STORAGE_KEY_LISTS]    === lists)    return; SyncManager.save(STORAGE_KEY_LISTS,    lists);    }, [lists,    syncRoomId]);
+
+      function handleSyncConnect(config, roomId) {
+        localStorage.setItem("sync_room_id", roomId);
+        SyncManager.init(config, roomId);
+        setSyncRoomId(roomId);
+        setShowSyncModal(false);
+      }
+      function handleSyncDisconnect() {
+        localStorage.removeItem("sync_room_id");
+        SyncManager.disconnect();
+        setSyncRoomId(null);
+        setShowSyncModal(false);
+      }
+
+      const [showTaskForm,  setShowTaskForm]  = useState(false);
+      const [editingTask,   setEditingTask]   = useState(null);
+      const [taskForm,      setTaskForm]      = useState({title:"",description:"",dueDate:"",dueTime:"",tags:[],status:"open"});
+      const [filterStatus,  setFilterStatus]  = useState("הכל");
+      const [newTag,        setNewTag]        = useState("");
+
+      const [shopInput,      setShopInput]      = useState("");
+      const [shopQty,        setShopQty]        = useState("");
+      const [shopCat,        setShopCat]        = useState("");
+      const [newShopCat,     setNewShopCat]     = useState("");
+      const [showManageCats, setShowManageCats] = useState(false);
+
+      const [showImportTasks,    setShowImportTasks]    = useState(false);
+      const [showImportShopping, setShowImportShopping] = useState(false);
+      const [showImportLists,    setShowImportLists]    = useState(false);
+      const [showPantry,         setShowPantry]         = useState(false);
+
+      const [toast, setToast] = useState("");
+      function showToast(msg) { setToast(msg); }
+
+      const [backupDue, setBackupDue]   = useState(false);
+      const [backupDaysSince, setBackupDaysSince] = useState(0);
+      const [backupDays, setBackupDays] = useState(() => parseInt(localStorage.getItem(STORAGE_KEY_BACKUP_DAYS)||"7"));
+      const [showImportAll, setShowImportAll] = useState(false);
+
+      useEffect(() => {
+        const last = localStorage.getItem(STORAGE_KEY_LAST_BACKUP);
+        if (!last) { localStorage.setItem(STORAGE_KEY_LAST_BACKUP, new Date().toISOString()); return; }
+        const days = (Date.now() - new Date(last)) / 86400000;
+        setBackupDaysSince(days);
+        if (days >= backupDays) setBackupDue(true);
+      }, [backupDays]);
+
+      // Check for reminders every minute
+      useEffect(() => {
+        const checkReminders = () => {
+          const now = new Date();
+          const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+          
+          const taskToRemind = tasks.find(t => 
+            t.dueTime && 
+            t.dueTime === currentTime && 
+            t.status !== "done" &&
+            new Date(t.dueDate) >= new Date(new Date().setHours(0, 0, 0, 0))
+          );
+          
+          if (taskToRemind && !reminderTask?.id?.includes(taskToRemind.id)) {
+            setReminderTask(taskToRemind);
+          }
+        };
+        
+        reminderCheckRef.current = setInterval(checkReminders, 60000);
+        checkReminders();
+        return () => clearInterval(reminderCheckRef.current);
+      }, [tasks, reminderTask]);
+
+      const nextId = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+      function exportTasks()    { downloadJSON({version:1,type:"tasks",exportedAt:new Date().toISOString(),tasks,tags},"גיבוי_משימות.json"); showToast("✅ קובץ משימות יוצא בהצלחה"); }
+      function exportShopping() { downloadJSON({version:1,type:"shopping",exportedAt:new Date().toISOString(),shopping,shopCats},"גיבוי_קניות.json"); showToast("✅ קובץ קניות יוצא בהצלחה"); }
+      function exportLists()    { downloadJSON({version:1,type:"lists",exportedAt:new Date().toISOString(),lists},"גיבוי_רשימות.json"); showToast("✅ קובץ רשימות יוצא בהצלחה"); }
+
+      function exportAll() {
+        const date = new Date().toLocaleDateString("he-IL").replace(/\./g,"-");
+        downloadJSON({version:2,type:"full",exportedAt:new Date().toISOString(),tasks,tags,shopping,shopCats,pantry,lists}, `גיבוי_מלא_${date}.json`);
+        localStorage.setItem(STORAGE_KEY_LAST_BACKUP, new Date().toISOString());
+        setBackupDue(false);
+        showToast("✅ גיבוי מלא נשמר בהצלחה");
+      }
+      function snoozeBackup() {
+        const d = new Date();
+        d.setDate(d.getDate() - backupDays + 1);
+        localStorage.setItem(STORAGE_KEY_LAST_BACKUP, d.toISOString());
+        setBackupDue(false);
+      }
+      function changeBackupDays(days) {
+        setBackupDays(days);
+        localStorage.setItem(STORAGE_KEY_BACKUP_DAYS, String(days));
+      }
+      function importAll(data) {
+        if (data.type !== "full" || !data.tasks) { alert("הקובץ אינו גיבוי מלא תואם"); return; }
+        if (data.tasks)    setTasks(data.tasks);
+        if (data.tags)     setTags(data.tags);
+        if (data.shopping) setShopping(data.shopping);
+        if (data.shopCats) setShopCats(data.shopCats);
+        if (data.pantry)   setPantry(data.pantry);
+        if (data.lists)    setLists(data.lists);
+        localStorage.setItem(STORAGE_KEY_LAST_BACKUP, new Date().toISOString());
+        setShowImportAll(false);
+        showToast("✅ גיבוי מלא נטען בהצלחה");
+      }
+      function importTasks(data)    { if (!data.tasks||data.type!=="tasks") return alert("הקובץ אינו גיבוי משימות תואם"); setTasks(data.tasks); if (data.tags) setTags(data.tags); setShowImportTasks(false); showToast("✅ משימות נטענו בהצלחה"); }
+      function importShopping(data) { if (!data.shopping||data.type!=="shopping") return alert("הקובץ אינו גיבוי קניות תואם"); setShopping(data.shopping); if (data.shopCats) setShopCats(data.shopCats); setShowImportShopping(false); showToast("✅ רשימת קניות נטענה בהצלחה"); }
+      function importLists(data)    { if (!data.lists||data.type!=="lists") return alert("הקובץ אינו גיבוי רשימות תואם"); setLists(data.lists); setShowImportLists(false); showToast("✅ רשימות נטענו בהצלחה"); }
+
+      function openNewTask() { setEditingTask(null); setTaskForm({title:"",description:"",dueDate:"",dueTime:"",tags:[],status:"open"}); setShowTaskForm(true); }
+      function openEditTask(task) { setEditingTask(task); setTaskForm({title:task.title,description:task.description||"",dueDate:task.dueDate||"",dueTime:task.dueTime||"",tags:task.tags||[],status:task.status}); setShowTaskForm(true); }
+
+      function openGoogleCalendar(task) {
+        const date = task.dueDate.replace(/-/g,"");
+        const time = (task.dueTime||"09:00").replace(":","");
+        const startH = parseInt(time.slice(0,2)), startM = parseInt(time.slice(2));
+        const endH = String(startH+1).padStart(2,"0");
+        const start = `${date}T${time}00`;
+        const end   = `${date}T${endH}${String(startM).padStart(2,"0")}00`;
+        const url = `https://calendar.google.com/calendar/render?action=TEMPLATE`
+          + `&text=${encodeURIComponent(task.title)}`
+          + `&dates=${start}/${end}`
+          + (task.description ? `&details=${encodeURIComponent(task.description)}` : "");
+        window.open(url, "_blank");
+      }
+      function saveTask() {
+        if (!taskForm.title.trim()) return;
+        if (editingTask) { setTasks(ts=>ts.map(t=>t.id===editingTask.id?{...t,...taskForm}:t)); }
+        else { setTasks(ts=>[...ts,{id:nextId(),...taskForm,createdAt:new Date().toISOString()}]); }
+        setShowTaskForm(false);
+      }
+      function deleteTask(id)  { setTasks(ts=>ts.filter(t=>t.id!==id)); }
+      function cycleStatus(id) {
+        const order=["open","inprogress","done"];
+        setTasks(ts=>ts.map(t=>t.id!==id?t:{...t,status:order[(order.indexOf(t.status)+1)%order.length]}));
+      }
+      function addTag() { if (!newTag.trim()||tags.includes(newTag.trim())) return; setTags(ts=>[...ts,newTag.trim()]); setNewTag(""); }
+
+      const filteredTasks = tasks.filter(t=>filterStatus==="הכל"||t.status===filterStatus);
+      function groupTasksByTag(taskList,tagList) {
+        const groups={}; tagList.forEach(tag=>{groups[tag]=[];}); groups["ללא קטגוריה"]=[];
+        taskList.forEach(task=>{
+          const taskTags=(task.tags||[]).filter(t=>tagList.includes(t));
+          if (taskTags.length===0) groups["ללא קטגוריה"].push(task);
+          else taskTags.forEach(tag=>groups[tag].push(task));
+        });
+        return groups;
+      }
+      const groupedTasks = groupTasksByTag(filteredTasks,tags);
+      const TAG_EMOJIS   = {"עבודה":"💼","בית":"🏠","אישי":"👤","דחוף":"🔴","ילדים":"👶"};
+
+      function addShopItem() {
+        if (!shopInput.trim()) return;
+        setShopping(s=>[...s,{id:nextId(),name:shopInput.trim(),qty:shopQty.trim()||"",category:shopCat||"אחר",checked:false}]);
+        setShopInput(""); setShopQty("");
+      }
+      function toggleShop(id)     { setShopping(s=>s.map(i=>i.id===id?{...i,checked:!i.checked}:i)); }
+      function deleteShopItem(id) { setShopping(s=>s.filter(i=>i.id!==id)); }
+      function addShopCat()       { if (!newShopCat.trim()||shopCats.includes(newShopCat.trim())) return; setShopCats(c=>[...c,newShopCat.trim()]); setNewShopCat(""); }
+
+      function moveCheckedToPantry() {
+        const checked=shopping.filter(i=>i.checked); if (checked.length===0) return;
+        setPantry(p=>{
+          const updated=[...p];
+          checked.forEach(item=>{
+            const exists=updated.find(x=>x.name===item.name&&x.category===item.category);
+            if (!exists) updated.push({id:nextId(),name:item.name,qty:item.qty,category:item.category});
+          });
+          return updated;
+        });
+        setShopping(s=>s.filter(i=>!i.checked));
+        showToast(`📦 ${checked.length} פריטים הועברו לאחסון`);
+      }
+      function addPantryToList(items) {
+        const toAdd=items.map(i=>({id:nextId(),name:i.name,qty:i.qty||"",category:i.category||"אחר",checked:false}));
+        setShopping(s=>[...s,...toAdd]); showToast(`✅ ${items.length} פריטים נוספו לרשימה`);
+      }
+      function removeFromPantry(id) { setPantry(p=>p.filter(i=>i.id!==id)); }
+
+      function exportToWhatsApp() {
+        const grouped={};
+        shopping.forEach(item=>{const cat=item.category||"אחר";if(!grouped[cat])grouped[cat]=[];grouped[cat].push(item);});
+        const lines=["🛒 *רשימת קניות*",""];
+        shopCats.forEach(cat=>{
+          if(!grouped[cat])return;
+          lines.push(`${CAT_EMOJIS[cat]||"🔹"} *${cat}*`);
+          grouped[cat].forEach(item=>lines.push(`${item.checked?"✅":"◻️"} ${item.name}${item.qty?` (${item.qty})`:""}`));
+          lines.push("");
+        });
+        window.open("https://wa.me/?text="+encodeURIComponent(lines.join("\n")),"_blank");
+      }
+
+      const checkedCount   = shopping.filter(i=>i.checked).length;
+      const openTasksCount = tasks.filter(t=>t.status!=="done").length;
+      const groupedShopping={};
+      shopping.forEach(item=>{const cat=item.category||"אחר";if(!groupedShopping[cat])groupedShopping[cat]=[];groupedShopping[cat].push(item);});
+      const orderedCats=shopCats.filter(c=>groupedShopping[c]);
+
+      const totalListItems = lists.reduce((acc,l)=>acc+(l.subLists||[]).reduce((a,s)=>a+(s.items||[]).length,0),0);
+
+      return (
+        <div style={{minHeight:"100vh",direction:"rtl"}}>
+          {/* HEADER */}
+          <div style={{background:"linear-gradient(160deg, #3d1a07 0%, #6b3518 100%)",padding:"20px 24px 0",boxShadow:"var(--shadow-md)",transition:"background 0.3s ease"}}>
+            <div style={{maxWidth:640,margin:"0 auto"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:26}}>✦</span>
+                  <div>
+                    <div style={{color:"#ffffff",fontWeight:800,fontSize:20}}>לוח הבית</div>
+                    <div style={{color:"#c4a882",fontSize:12}}>{openTasksCount} משימות · {shopping.length-checkedCount} קניות · {lists.length} רשימות</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <button onClick={()=>setShowSyncModal(true)} style={{background:syncRoomId?"rgba(168,255,176,0.15)":"rgba(255,255,255,0.1)",border:syncRoomId?"1.5px solid rgba(168,255,176,0.4)":"1.5px solid rgba(255,255,255,0.2)",borderRadius:8,padding:"5px 10px",color:syncRoomId?"#a8ffb0":"#d4c1ec",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4,transition:"all 0.2s ease"}}>
+                    {syncRoomId ? "☁️ מחובר" : "☁️ סנכרון"}
+                  </button>
+                  <button onClick={exportAll} title="גיבוי מלא" style={{background:"rgba(255,255,255,0.1)",border:"1.5px solid rgba(255,255,255,0.2)",borderRadius:8,padding:"5px 9px",color:"#d4c1ec",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4,transition:"all 0.2s ease",position:"relative"}}>
+                    💾{backupDue&&<span style={{position:"absolute",top:-4,right:-4,width:8,height:8,borderRadius:"50%",background:"#ff6b6b"}}/>}
+                  </button>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:2}}>
+                {[["tasks","📋 משימות"],["shopping","🛒 קניות"],["lists","📑 רשימות"]].map(([id,label])=>(
+                  <button key={id} onClick={()=>setTab(id)} style={{
+                    background:tab===id?"var(--bg-primary)":"transparent",
+                    color:tab===id?"var(--accent-brown)":"#d4c1ec",
+                    border:"none",borderRadius:"10px 10px 0 0",
+                    padding:"10px 16px",fontWeight:700,fontSize:13,cursor:"pointer",
+                    transition:"all 0.2s ease",
+                  }}>{label}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{maxWidth:640,margin:"0 auto",padding:"20px 16px"}}>
+
+            {backupDue&&<AutoBackupBanner onBackup={exportAll} onSnooze={snoozeBackup} onRestore={()=>setShowImportAll(true)} backupDays={backupDays} onChangeDays={changeBackupDays} daysSince={backupDaysSince}/>}
+
+            {/* ===== TASKS ===== */}
+            {tab==="tasks" && (
+              <div>
+                <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                  <button onClick={exportTasks} style={tbBtn("rgba(58, 95, 160, 0.1)","#3a5fa0","#b0c4e8")}>⬇ ייצוא גיבוי</button>
+                  <button onClick={()=>setShowImportTasks(true)} style={tbBtn("var(--bg-secondary)","var(--accent-light)","var(--border-color)")}>⬆ טעינת גיבוי</button>
+                </div>
+                <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
+                  <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{background:"var(--card-bg)",border:`1.5px solid var(--border-color)`,borderRadius:8,padding:"7px 12px",fontSize:13,color:"var(--accent-light)",cursor:"pointer",transition:"all 0.2s ease"}}>
+                    <option value="הכל">כל הסטטוסים</option>
+                    <option value="open">פתוח</option>
+                    <option value="inprogress">בתהליך</option>
+                    <option value="done">הושלם</option>
+                  </select>
+                  <button onClick={openNewTask} style={{flex:1,background:"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))",color:"#fff",border:"none",borderRadius:10,padding:"9px 16px",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"var(--shadow-md)",transition:"all 0.2s ease"}}>+ הוסף משימה חדשה</button>
+                </div>
+                {showTaskForm && (
+                  <div style={{background:"var(--card-bg)",border:`2px solid var(--border-color)`,borderRadius:16,padding:20,marginBottom:16,boxShadow:"var(--shadow-lg)",transition:"all 0.2s ease"}}>
+                    <div style={{fontWeight:800,fontSize:16,marginBottom:14,color:"var(--text-primary)"}}>{editingTask?"✎ עריכת משימה":"+ משימה חדשה"}</div>
+                    <input value={taskForm.title} onChange={e=>setTaskForm(f=>({...f,title:e.target.value}))} placeholder="כותרת המשימה *" style={iStyle}/>
+                    <textarea value={taskForm.description} onChange={e=>setTaskForm(f=>({...f,description:e.target.value}))} placeholder="תיאור (אופציונלי)" rows={2} style={{...iStyle,resize:"vertical",minHeight:60}}/>
+                    <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                      <input type="date" value={taskForm.dueDate} onChange={e=>setTaskForm(f=>({...f,dueDate:e.target.value}))} style={{...iStyle,flex:1,minWidth:130}}/>
+                      <input type="time" value={taskForm.dueTime} onChange={e=>setTaskForm(f=>({...f,dueTime:e.target.value}))} placeholder="שעה" style={{...iStyle,flex:1,minWidth:100}}/>
+                      <select value={taskForm.status} onChange={e=>setTaskForm(f=>({...f,status:e.target.value}))} style={{...iStyle,flex:1,minWidth:120}}>
+                        <option value="open">פתוח</option>
+                        <option value="inprogress">בתהליך</option>
+                        <option value="done">הושלם</option>
+                      </select>
+                    </div>
+                    <div style={{marginBottom:10}}>
+                      <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:6}}>תגיות:</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                        {tags.map(t=>{const sel=taskForm.tags.includes(t);return <button key={t} onClick={()=>setTaskForm(f=>({...f,tags:sel?f.tags.filter(x=>x!==t):[...f.tags,t]}))} style={{background:sel?"var(--accent-light)":"var(--bg-secondary)",color:sel?"#fff":"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:20,padding:"4px 12px",fontSize:12,fontWeight:600,cursor:"pointer",transition:"all 0.2s ease"}}>{t}</button>;})}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:8,marginTop:4}}>
+                      <button onClick={saveTask} style={{flex:1,background:"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))",color:"#fff",border:"none",borderRadius:10,padding:"11px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>שמור</button>
+                      <button onClick={()=>setShowTaskForm(false)} style={{flex:1,background:"var(--bg-secondary)",color:"var(--accent-light)",border:`1.5px solid var(--border-color)`,borderRadius:10,padding:"11px",fontWeight:700,fontSize:14,cursor:"pointer",transition:"all 0.2s ease"}}>ביטול</button>
+                    </div>
+                  </div>
+                )}
+                {filteredTasks.length===0
+                  ? <div style={{textAlign:"center",color:"var(--text-muted)",padding:40,fontSize:15,transition:"color 0.2s ease"}}>אין משימות להצגה ✦</div>
+                  : [...tags,"ללא קטגוריה"].map(tag=>{
+                      const group=groupedTasks[tag]||[]; if(group.length===0)return null;
+                      const openCount=group.filter(t=>t.status!=="done").length;
+                      return (
+                        <div key={tag} style={{marginBottom:20}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",marginBottom:6,background:"linear-gradient(90deg, var(--bg-secondary), var(--bg-primary))",borderRadius:10,border:`1px solid var(--border-color)`,transition:"all 0.2s ease"}}>
+                            <span style={{fontSize:17}}>{TAG_EMOJIS[tag]||"🏷"}</span>
+                            <span style={{fontWeight:800,fontSize:14,color:"var(--accent-light)"}}>{tag}</span>
+                            <span style={{fontSize:11,color:"var(--text-muted)",background:"var(--card-bg)",borderRadius:20,padding:"1px 8px",border:`1px solid var(--border-color)`,marginRight:"auto",transition:"all 0.2s ease"}}>{openCount} פתוחות</span>
+                          </div>
+                          {group.map(task=><TaskCard key={task.id+tag} task={task} onToggle={cycleStatus} onDelete={deleteTask} onEdit={openEditTask} onCalendar={openGoogleCalendar}/>)}
+                        </div>
+                      );
+                    })
+                }
+                <div style={{marginTop:24,background:"var(--card-bg)",borderRadius:14,padding:16,border:`1.5px solid var(--border-color)`,transition:"all 0.2s ease"}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"var(--text-secondary)",marginBottom:10,transition:"color 0.2s ease"}}>⚙ ניהול תגיות</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>{tags.map(t=><TagBadge key={t} tag={t} onRemove={()=>setTags(ts=>ts.filter(x=>x!==t))}/>)}</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <input value={newTag} onChange={e=>setNewTag(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTag()} placeholder="תגית חדשה..." style={{...iStyle,flex:1,marginBottom:0}}/>
+                    <button onClick={addTag} style={{background:"var(--accent-light)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>הוסף</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ===== SHOPPING ===== */}
+            {tab==="shopping" && (
+              <div>
+                <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                  <button onClick={exportShopping} style={tbBtn("rgba(58, 95, 160, 0.1)","#3a5fa0","#b0c4e8")}>⬇ ייצוא גיבוי</button>
+                  <button onClick={()=>setShowImportShopping(true)} style={tbBtn("var(--bg-secondary)","var(--accent-light)","var(--border-color)")}>⬆ טעינת גיבוי</button>
+                  {shopping.length>0&&<button onClick={exportToWhatsApp} style={tbBtn("rgba(46, 125, 50, 0.1)","#2e7d32","#a5d6a7")}>💬 ווצאפ</button>}
+                  <button onClick={()=>setShowPantry(true)} style={tbBtn("rgba(123, 63, 160, 0.1)","#7b3fa0","#d4b0e0")}>
+                    📦 אחסון {pantry.length>0&&<span style={{background:"#7b3fa0",color:"#fff",borderRadius:20,padding:"0px 6px",fontSize:11,transition:"all 0.2s ease"}}>{pantry.length}</span>}
+                  </button>
+                </div>
+                <div style={{background:"var(--card-bg)",borderRadius:14,padding:16,border:`1.5px solid var(--border-color)`,marginBottom:14,transition:"all 0.2s ease"}}>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+                    <input value={shopInput} onChange={e=>setShopInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addShopItem()} placeholder="מה צריך לקנות?" style={{...iStyle,flex:2,minWidth:140,marginBottom:0}}/>
+                    <input value={shopQty}   onChange={e=>setShopQty(e.target.value)}   onKeyDown={e=>e.key==="Enter"&&addShopItem()} placeholder="כמות" style={{...iStyle,flex:1,minWidth:65,marginBottom:0}}/>
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <select value={shopCat} onChange={e=>setShopCat(e.target.value)} style={{...iStyle,flex:1,marginBottom:0}}>
+                      <option value="">בחר קטגוריה...</option>
+                      {shopCats.map(c=><option key={c} value={c}>{(CAT_EMOJIS[c]||"🔹")+" "+c}</option>)}
+                    </select>
+                    <button onClick={addShopItem} style={{background:"linear-gradient(135deg, var(--accent-light), var(--accent-lightest))",color:"#fff",border:"none",borderRadius:10,padding:"10px 18px",fontWeight:700,fontSize:14,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.2s ease"}}>+ הוסף</button>
+                  </div>
+                </div>
+                {shopping.length>0&&(
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+                    <span style={{color:"var(--text-secondary)",fontSize:13,transition:"color 0.2s ease"}}>{checkedCount}/{shopping.length} פריטים נסמנו</span>
+                    <div style={{display:"flex",gap:8}}>
+                      {checkedCount>0&&(
+                        <>
+                          <button onClick={moveCheckedToPantry} style={{background:"rgba(123, 63, 160, 0.1)",color:"#7b3fa0",border:"1.5px solid #d4b0e0",borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>📦 העבר לאחסון ({checkedCount})</button>
+                          <button onClick={()=>setShopping(s=>s.filter(i=>!i.checked))} style={{background:"rgba(217, 83, 79, 0.1)",color:"#d9534f",border:"1.5px solid #f5c0c0",borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>🗑 מחק ({checkedCount})</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {shopping.length>0&&(
+                  <div style={{background:"var(--bg-secondary)",borderRadius:10,height:8,marginBottom:16,overflow:"hidden",transition:"all 0.2s ease"}}>
+                    <div style={{background:"linear-gradient(90deg, #6dc98e, #4caf7d)",height:"100%",borderRadius:10,width:`${(checkedCount/shopping.length)*100}%`,transition:"width 0.4s ease"}}/>
+                  </div>
+                )}
+                {shopping.length===0
+                  ? <div style={{textAlign:"center",color:"var(--text-muted)",padding:40,fontSize:15,transition:"color 0.2s ease"}}>הרשימה ריקה — הוסיפי פריטים ✦</div>
+                  : <ShoppingDragList
+                      shopping={shopping} setShopping={setShopping}
+                      shopCats={shopCats} orderedCats={orderedCats}
+                      groupedShopping={groupedShopping}
+                      toggleShop={toggleShop} deleteShopItem={deleteShopItem}
+                      CAT_EMOJIS={CAT_EMOJIS} iStyle={iStyle}
+                    />
+                }
+                <div style={{marginTop:8,fontSize:11,color:"var(--text-muted)",textAlign:"center",transition:"color 0.2s ease"}}>💡 לחצי לחיצה ארוכה על מוצר וגררי אותו לקטגוריה אחרת</div>
+                <div style={{marginTop:20,background:"var(--card-bg)",borderRadius:14,padding:16,border:`1.5px solid var(--border-color)`,transition:"all 0.2s ease"}}>
+                  <button onClick={()=>setShowManageCats(v=>!v)} style={{background:"none",border:"none",fontWeight:700,fontSize:13,color:"var(--text-secondary)",cursor:"pointer",padding:0,width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",transition:"color 0.2s ease"}}>
+                    <span>⚙ ניהול קטגוריות קניות</span><span>{showManageCats?"▲":"▼"}</span>
+                  </button>
+                  {showManageCats&&(
+                    <div style={{marginTop:12}}>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                        {shopCats.map(c=>(
+                          <span key={c} style={{display:"inline-flex",alignItems:"center",gap:4,background:"var(--bg-secondary)",color:"var(--text-primary)",borderRadius:20,padding:"3px 10px",fontSize:12,fontWeight:600,border:`1px solid var(--border-color)`,transition:"all 0.2s ease"}}>
+                            {CAT_EMOJIS[c]||"🔹"} {c}
+                            <span onClick={()=>setShopCats(cs=>cs.filter(x=>x!==c))} style={{cursor:"pointer",opacity:0.5,marginRight:2,fontSize:14}}>×</span>
+                          </span>
+                        ))}
+                      </div>
+                      <div style={{display:"flex",gap:8}}>
+                        <input value={newShopCat} onChange={e=>setNewShopCat(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addShopCat()} placeholder="קטגוריה חדשה..." style={{...iStyle,flex:1,marginBottom:0}}/>
+                        <button onClick={addShopCat} style={{background:"var(--accent-light)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer",transition:"all 0.2s ease"}}>הוסף</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ===== LISTS ===== */}
+            {tab==="lists" && <ListsTab lists={lists} setLists={setLists} showImportLists={showImportLists} setShowImportLists={setShowImportLists} exportLists={exportLists}/>}
+
+          </div>
+
+          {showImportTasks    && <ImportModal title="משימות"    onImport={importTasks}    onClose={()=>setShowImportTasks(false)}/>}
+          {showImportShopping && <ImportModal title="קניות"     onImport={importShopping} onClose={()=>setShowImportShopping(false)}/>}
+          {showImportLists    && <ImportModal title="רשימות"    onImport={importLists}    onClose={()=>setShowImportLists(false)}/>}
+          {showImportAll      && <ImportModal title="גיבוי מלא" onImport={importAll}      onClose={()=>setShowImportAll(false)}/>}
+          {showPantry && <PantryModal pantry={pantry} shopCats={shopCats} onAddToList={addPantryToList} onRemoveFromPantry={removeFromPantry} onClose={()=>setShowPantry(false)}/>}
+          {showSyncModal && <SyncModal currentRoomId={syncRoomId} onConnect={handleSyncConnect} onDisconnect={handleSyncDisconnect} onClose={()=>setShowSyncModal(false)}/>}
+          {toast && <Toast msg={toast} onDone={()=>setToast("")}/>}
+          {reminderTask && <ReminderNotification task={reminderTask} onClose={()=>setReminderTask(null)}/>}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .catch(e => console.log('SW registration failed:', e));
+      });
+    }
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist();
+    }
+  </script>
+</body>
+</html>
