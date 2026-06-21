@@ -1,5 +1,5 @@
-const CACHE = 'drop-list-v4';
-const PRECACHE = ['/drop_list.html', '/manifest.json'];
+const CACHE = 'drop-list-v5';
+const PRECACHE = ['/drop_list/drop_list.html', '/drop_list/manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
